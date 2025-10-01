@@ -1,8 +1,7 @@
 #!/bin/bash
 
 ###############################################################################
-# WordPress Temporary Accounts - Installation Script
-# Installs for both WHM (administrators) and cPanel (users)
+# WordPress Temporary Accounts - Pure Perl Installation Script
 ###############################################################################
 
 set -euo pipefail
@@ -33,109 +32,40 @@ fi
 
 echo "======================================"
 echo " WordPress Temporary Accounts"
-echo " Installation"
+echo " Pure Perl Installation (WHM + cPanel)"
 echo "======================================"
 echo ""
 
-# Check Node.js
-if ! command -v node &> /dev/null; then
-    log_error "Node.js is not installed"
-    log_info "Installing Node.js..."
-
-    # Install Node.js from NodeSource
-    curl -fsSL https://rpm.nodesource.com/setup_18.x | bash -
-    yum install -y nodejs
-
-    log_info "Node.js installed: $(node --version)"
-else
-    log_info "Node.js found: $(node --version)"
-fi
-
-# Check PHP
-if ! command -v php &> /dev/null; then
-    log_warn "PHP not found, installing..."
-    yum install -y ea-php74
-fi
-
 # Create directories
 log_info "Creating directories..."
-mkdir -p /usr/local/lib/wp-tempd
-mkdir -p /var/log/wp-tempd
 mkdir -p /usr/local/cpanel/whostmgr/docroot/cgi/wp_temp_accounts
 mkdir -p /usr/local/cpanel/base/frontend/paper_lantern/wp_temp_accounts
 
-# Install daemon
-log_info "Installing daemon..."
-cp daemon/server.js /usr/local/lib/wp-tempd/
-cp daemon/package.json /usr/local/lib/wp-tempd/
-
-# Install Node modules
-cd /usr/local/lib/wp-tempd
-npm install --production --quiet
-cd -
-
-# Install systemd service
-log_info "Installing systemd service..."
-cp packaging/wp-tempd.service /etc/systemd/system/
-systemctl daemon-reload
-systemctl enable wp-tempd
-systemctl restart wp-tempd
-
-# Check daemon status
-if systemctl is-active --quiet wp-tempd; then
-    log_info "Daemon started successfully"
-else
-    log_error "Daemon failed to start"
-    systemctl status wp-tempd --no-pager
-    exit 1
-fi
-
-# Install WHM files
-log_info "Installing WHM integration..."
+# Install WHM plugin
+log_info "Installing WHM plugin..."
 install -m 755 whm/wp_temp_accounts.cgi /usr/local/cpanel/whostmgr/docroot/cgi/wp_temp_accounts/
-install -m 755 whm/api.cgi /usr/local/cpanel/whostmgr/docroot/cgi/wp_temp_accounts/
-install -m 644 whm/frontend/index.html /usr/local/cpanel/whostmgr/docroot/cgi/wp_temp_accounts/
-install -m 644 whm/frontend/app.js /usr/local/cpanel/whostmgr/docroot/cgi/wp_temp_accounts/
-install -m 644 whm/frontend/style.css /usr/local/cpanel/whostmgr/docroot/cgi/wp_temp_accounts/
 install -m 644 packaging/wp_temp_accounts_icon.png /usr/local/cpanel/whostmgr/docroot/cgi/wp_temp_accounts/
 
-# Install cPanel files
-log_info "Installing cPanel integration..."
-install -m 755 cpanel/proxy.php /usr/local/cpanel/base/frontend/paper_lantern/wp_temp_accounts/
-install -m 644 cpanel/frontend/index.html /usr/local/cpanel/base/frontend/paper_lantern/wp_temp_accounts/
-install -m 644 cpanel/frontend/app.js /usr/local/cpanel/base/frontend/paper_lantern/wp_temp_accounts/
-install -m 644 cpanel/frontend/style.css /usr/local/cpanel/base/frontend/paper_lantern/wp_temp_accounts/
+# Install cPanel plugin
+log_info "Installing cPanel plugin..."
+install -m 755 cpanel/wp_temp_accounts.cgi /usr/local/cpanel/base/frontend/paper_lantern/wp_temp_accounts/index.cgi
 install -m 644 packaging/wp_temp_accounts_icon.png /usr/local/cpanel/base/frontend/paper_lantern/wp_temp_accounts/
 
 # Register with WHM
 log_info "Registering with WHM..."
 
-# Clean up any old registrations FIRST (before creating new file)
+# Clean up any old registrations FIRST
 /usr/local/cpanel/bin/unregister_appconfig wordpress_temporary_accounts 2>/dev/null || true
 /usr/local/cpanel/bin/unregister_appconfig wp_temp_accounts 2>/dev/null || true
 
 # Ensure directory exists
-if ! mkdir -p /var/cpanel/apps 2>&1; then
-    log_error "Failed to create /var/cpanel/apps directory"
-    exit 1
-fi
+mkdir -p /var/cpanel/apps
 
-log_info "Writing AppConfig to /var/cpanel/apps/wp_temp_accounts.conf"
-
-# Check if /var/cpanel/apps is writable
-if [ ! -w /var/cpanel/apps ]; then
-    log_error "/var/cpanel/apps is not writable"
-    ls -ld /var/cpanel/apps
-    exit 1
-fi
-
-# Write AppConfig to temp file first, then move it
+# Write AppConfig to temp file
 TEMP_CONF=$(mktemp) || {
     log_error "Failed to create temp file"
     exit 1
 }
-
-log_info "Created temp file: $TEMP_CONF"
 
 cat > "$TEMP_CONF" <<'EOF'
 name=wp_temp_accounts
@@ -149,55 +79,33 @@ target=_self
 icon=wp_temp_accounts_icon.png
 EOF
 
-# Verify temp file was created and has content
+# Verify temp file
 if [ ! -s "$TEMP_CONF" ]; then
     log_error "Failed to write AppConfig to temp file"
     rm -f "$TEMP_CONF"
     exit 1
 fi
 
-log_info "Temp file size: $(wc -c < "$TEMP_CONF") bytes"
-log_info "Moving temp file to /var/cpanel/apps/wp_temp_accounts.conf"
-
 # Move to final location
 if ! mv "$TEMP_CONF" /var/cpanel/apps/wp_temp_accounts.conf; then
-    log_error "Failed to move temp file to /var/cpanel/apps/"
+    log_error "Failed to move AppConfig"
     rm -f "$TEMP_CONF"
     exit 1
 fi
 
-log_info "File moved successfully"
-
-# Verify file exists immediately after move
-if [ ! -f /var/cpanel/apps/wp_temp_accounts.conf ]; then
-    log_error "File disappeared immediately after move!"
-    ls -la /var/cpanel/apps/ | grep wp
-    exit 1
-fi
-
-log_info "File exists after move, setting permissions..."
-
 # Set permissions
-if ! chmod 644 /var/cpanel/apps/wp_temp_accounts.conf; then
-    log_error "chmod failed"
-    exit 1
-fi
+chmod 644 /var/cpanel/apps/wp_temp_accounts.conf
+chown root:root /var/cpanel/apps/wp_temp_accounts.conf
 
-if ! chown root:root /var/cpanel/apps/wp_temp_accounts.conf; then
-    log_error "chown failed"
-    exit 1
-fi
-
-# Verify file still exists after permissions
+# Verify file exists
 if [ ! -f /var/cpanel/apps/wp_temp_accounts.conf ]; then
-    log_error "File disappeared after setting permissions!"
-    ls -la /var/cpanel/apps/ | grep wp
+    log_error "AppConfig file not created"
     exit 1
 fi
 
-log_info "Permissions set successfully"
+log_info "AppConfig created successfully"
 
-# Register new config (old registrations already cleaned up above)
+# Register WHM config
 /usr/local/cpanel/bin/register_appconfig /var/cpanel/apps/wp_temp_accounts.conf || {
     log_error "Failed to register WHM AppConfig"
     log_error "File contents:"
@@ -205,27 +113,31 @@ log_info "Permissions set successfully"
     exit 1
 }
 
+log_info "WHM plugin registered successfully"
+
 # Register with cPanel
 log_info "Registering with cPanel..."
 
-# Unregister old cPanel app FIRST (before creating new file)
+# Clean up old cPanel registration FIRST
 /usr/local/cpanel/bin/unregister_appconfig wp_temp_accounts_cpanel 2>/dev/null || true
 
-# Write cPanel AppConfig to temp file first
-TEMP_CPANEL_CONF=$(mktemp)
+# Write cPanel AppConfig to temp file
+TEMP_CPANEL_CONF=$(mktemp) || {
+    log_error "Failed to create temp file for cPanel"
+    exit 1
+}
+
 cat > "$TEMP_CPANEL_CONF" <<'EOF'
 name=wp_temp_accounts_cpanel
 service=cpanel
-group=software
-itemorder=1
-url=/frontend/paper_lantern/wp_temp_accounts/index.html
-entryurl=wp_temp_accounts/index.html
+url=/frontend/paper_lantern/wp_temp_accounts/index.cgi
 displayname=WordPress Temporary Accounts
-icon=/frontend/paper_lantern/wp_temp_accounts/wp_temp_accounts_icon.png
-acls=all
+entryurl=wp_temp_accounts/index.cgi
+target=_self
+icon=wp_temp_accounts_icon.png
 EOF
 
-# Verify temp file was created and has content
+# Verify temp file
 if [ ! -s "$TEMP_CPANEL_CONF" ]; then
     log_error "Failed to write cPanel AppConfig to temp file"
     rm -f "$TEMP_CPANEL_CONF"
@@ -233,25 +145,31 @@ if [ ! -s "$TEMP_CPANEL_CONF" ]; then
 fi
 
 # Move to final location
-mv "$TEMP_CPANEL_CONF" /var/cpanel/apps/wp_temp_accounts_cpanel.conf
+if ! mv "$TEMP_CPANEL_CONF" /var/cpanel/apps/wp_temp_accounts_cpanel.conf; then
+    log_error "Failed to move cPanel AppConfig"
+    rm -f "$TEMP_CPANEL_CONF"
+    exit 1
+fi
 
 # Set permissions
 chmod 644 /var/cpanel/apps/wp_temp_accounts_cpanel.conf
 chown root:root /var/cpanel/apps/wp_temp_accounts_cpanel.conf
 
-# Verify file was created
+# Verify file exists
 if [ ! -f /var/cpanel/apps/wp_temp_accounts_cpanel.conf ]; then
     log_error "cPanel AppConfig file not created"
     exit 1
 fi
 
-# Register new config (old registration already cleaned up above)
+# Register cPanel config
 /usr/local/cpanel/bin/register_appconfig /var/cpanel/apps/wp_temp_accounts_cpanel.conf || {
     log_error "Failed to register cPanel AppConfig"
     log_error "File contents:"
     cat /var/cpanel/apps/wp_temp_accounts_cpanel.conf
     exit 1
 }
+
+log_info "cPanel plugin registered successfully"
 
 # Restart services
 log_info "Restarting cpsrvd..."
@@ -266,10 +184,9 @@ echo "Access the plugin:"
 echo "  WHM: WHM → Plugins → WordPress Temporary Accounts"
 echo "  cPanel: cPanel → Software → WordPress Temporary Accounts"
 echo ""
-echo "Daemon status:"
-echo "  systemctl status wp-tempd"
-echo ""
-echo "Logs:"
-echo "  /var/log/wp-tempd/wp-tempd.log"
-echo "  journalctl -u wp-tempd -f"
+echo "Features:"
+echo "  • Pure Perl (no Node.js dependency)"
+echo "  • WHM: Manage all sites (root access)"
+echo "  • cPanel: Users manage their own sites"
+echo "  • WP-CLI integration for WordPress operations"
 echo ""
