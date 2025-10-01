@@ -108,16 +108,30 @@ install -m 644 packaging/wp_temp_accounts_icon.png /usr/local/cpanel/base/fronte
 
 # Register with WHM
 log_info "Registering with WHM..."
-install -m 644 packaging/wp_temp_accounts.conf /var/cpanel/apps/
 
-# Verify file was installed correctly
+# Ensure directory exists
+mkdir -p /var/cpanel/apps
+
+# Write AppConfig directly (more reliable than install command)
+cat > /var/cpanel/apps/wp_temp_accounts.conf <<'EOF'
+name=wp_temp_accounts
+service=whostmgr
+group=plugins
+itemorder=1
+url=/cgi/wp_temp_accounts/index.html
+entryurl=wp_temp_accounts/index.html
+displayname=WordPress Temporary Accounts
+icon=/cgi/wp_temp_accounts/wp_temp_accounts_icon.png
+acls=all
+EOF
+
+# Set permissions
+chmod 644 /var/cpanel/apps/wp_temp_accounts.conf
+chown root:root /var/cpanel/apps/wp_temp_accounts.conf
+
+# Verify file was created
 if [ ! -f /var/cpanel/apps/wp_temp_accounts.conf ]; then
-    log_error "WHM AppConfig file not found after install"
-    exit 1
-fi
-
-if [ ! -r /var/cpanel/apps/wp_temp_accounts.conf ]; then
-    log_error "WHM AppConfig file not readable"
+    log_error "WHM AppConfig file not created"
     exit 1
 fi
 
@@ -135,16 +149,27 @@ fi
 
 # Register with cPanel
 log_info "Registering with cPanel..."
-install -m 644 packaging/wp_temp_accounts_cpanel.conf /var/cpanel/apps/
 
-# Verify file exists and is readable
+# Write cPanel AppConfig directly
+cat > /var/cpanel/apps/wp_temp_accounts_cpanel.conf <<'EOF'
+name=wp_temp_accounts_cpanel
+service=cpanel
+group=software
+itemorder=1
+url=/frontend/paper_lantern/wp_temp_accounts/index.html
+entryurl=wp_temp_accounts/index.html
+displayname=WordPress Temporary Accounts
+icon=/frontend/paper_lantern/wp_temp_accounts/wp_temp_accounts_icon.png
+acls=all
+EOF
+
+# Set permissions
+chmod 644 /var/cpanel/apps/wp_temp_accounts_cpanel.conf
+chown root:root /var/cpanel/apps/wp_temp_accounts_cpanel.conf
+
+# Verify file was created
 if [ ! -f /var/cpanel/apps/wp_temp_accounts_cpanel.conf ]; then
-    log_error "cPanel AppConfig file not found after install"
-    exit 1
-fi
-
-if [ ! -r /var/cpanel/apps/wp_temp_accounts_cpanel.conf ]; then
-    log_error "cPanel AppConfig file not readable"
+    log_error "cPanel AppConfig file not created"
     exit 1
 fi
 
