@@ -109,6 +109,10 @@ install -m 644 packaging/wp_temp_accounts_icon.png /usr/local/cpanel/base/fronte
 # Register with WHM
 log_info "Registering with WHM..."
 
+# Clean up any old registrations FIRST (before creating new file)
+/usr/local/cpanel/bin/unregister_appconfig wordpress_temporary_accounts 2>/dev/null || true
+/usr/local/cpanel/bin/unregister_appconfig wp_temp_accounts 2>/dev/null || true
+
 # Ensure directory exists
 if ! mkdir -p /var/cpanel/apps 2>&1; then
     log_error "Failed to create /var/cpanel/apps directory"
@@ -192,11 +196,7 @@ fi
 
 log_info "Permissions set successfully"
 
-# Clean up any old registrations
-/usr/local/cpanel/bin/unregister_appconfig wordpress_temporary_accounts 2>/dev/null || true
-/usr/local/cpanel/bin/unregister_appconfig wp_temp_accounts 2>/dev/null || true
-
-# Register new config
+# Register new config (old registrations already cleaned up above)
 /usr/local/cpanel/bin/register_appconfig /var/cpanel/apps/wp_temp_accounts.conf || {
     log_error "Failed to register WHM AppConfig"
     log_error "File contents:"
@@ -206,6 +206,9 @@ log_info "Permissions set successfully"
 
 # Register with cPanel
 log_info "Registering with cPanel..."
+
+# Unregister old cPanel app FIRST (before creating new file)
+/usr/local/cpanel/bin/unregister_appconfig wp_temp_accounts_cpanel 2>/dev/null || true
 
 # Write cPanel AppConfig to temp file first
 TEMP_CPANEL_CONF=$(mktemp)
@@ -241,8 +244,7 @@ if [ ! -f /var/cpanel/apps/wp_temp_accounts_cpanel.conf ]; then
     exit 1
 fi
 
-# Unregister old and register new
-/usr/local/cpanel/bin/unregister_appconfig wp_temp_accounts_cpanel 2>/dev/null || true
+# Register new config (old registration already cleaned up above)
 /usr/local/cpanel/bin/register_appconfig /var/cpanel/apps/wp_temp_accounts_cpanel.conf || {
     log_error "Failed to register cPanel AppConfig"
     log_error "File contents:"
