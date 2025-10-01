@@ -4,6 +4,7 @@ if 0;
 #!/usr/bin/perl
 
 #WHMADDON:wp_temp_accounts:WordPress Temporary Accounts
+#ACLS:all
 
 use strict;
 use warnings;
