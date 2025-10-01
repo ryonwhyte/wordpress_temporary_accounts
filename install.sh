@@ -109,21 +109,53 @@ install -m 644 packaging/wp_temp_accounts_icon.png /usr/local/cpanel/base/fronte
 # Register with WHM
 log_info "Registering with WHM..."
 install -m 644 packaging/wp_temp_accounts.conf /var/cpanel/apps/
+
+# Verify file was installed correctly
+if [ ! -f /var/cpanel/apps/wp_temp_accounts.conf ]; then
+    log_error "WHM AppConfig file not found after install"
+    exit 1
+fi
+
+if [ ! -r /var/cpanel/apps/wp_temp_accounts.conf ]; then
+    log_error "WHM AppConfig file not readable"
+    exit 1
+fi
+
 # Clean up any old registrations
 /usr/local/cpanel/bin/unregister_appconfig wordpress_temporary_accounts 2>/dev/null || true
 /usr/local/cpanel/bin/unregister_appconfig wp_temp_accounts 2>/dev/null || true
-/usr/local/cpanel/bin/register_appconfig /var/cpanel/apps/wp_temp_accounts.conf
+
+# Register new config
+/usr/local/cpanel/bin/register_appconfig /var/cpanel/apps/wp_temp_accounts.conf || {
+    log_error "Failed to register WHM AppConfig"
+    log_error "File contents:"
+    cat /var/cpanel/apps/wp_temp_accounts.conf
+    exit 1
+}
 
 # Register with cPanel
 log_info "Registering with cPanel..."
 install -m 644 packaging/wp_temp_accounts_cpanel.conf /var/cpanel/apps/
+
 # Verify file exists and is readable
+if [ ! -f /var/cpanel/apps/wp_temp_accounts_cpanel.conf ]; then
+    log_error "cPanel AppConfig file not found after install"
+    exit 1
+fi
+
 if [ ! -r /var/cpanel/apps/wp_temp_accounts_cpanel.conf ]; then
     log_error "cPanel AppConfig file not readable"
     exit 1
 fi
+
+# Unregister old and register new
 /usr/local/cpanel/bin/unregister_appconfig wp_temp_accounts_cpanel 2>/dev/null || true
-/usr/local/cpanel/bin/register_appconfig /var/cpanel/apps/wp_temp_accounts_cpanel.conf
+/usr/local/cpanel/bin/register_appconfig /var/cpanel/apps/wp_temp_accounts_cpanel.conf || {
+    log_error "Failed to register cPanel AppConfig"
+    log_error "File contents:"
+    cat /var/cpanel/apps/wp_temp_accounts_cpanel.conf
+    exit 1
+}
 
 # Restart services
 log_info "Restarting cpsrvd..."
