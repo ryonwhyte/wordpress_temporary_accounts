@@ -3,10 +3,14 @@ use strict;
 use warnings;
 use IO::Socket::UNIX;
 use JSON ();
+use CGI ();
 
 $|=1;
 binmode STDIN;
 binmode STDOUT;
+
+# Initialize CGI
+my $cgi = CGI->new();
 
 sub out {
     print "Content-Type: application/json\r\n\r\n", JSON::encode_json($_[0]);

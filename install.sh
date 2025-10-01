@@ -109,12 +109,19 @@ install -m 644 packaging/wp_temp_accounts_icon.png /usr/local/cpanel/base/fronte
 # Register with WHM
 log_info "Registering with WHM..."
 install -m 644 packaging/wp_temp_accounts.conf /var/cpanel/apps/
+# Clean up any old registrations
 /usr/local/cpanel/bin/unregister_appconfig wordpress_temporary_accounts 2>/dev/null || true
+/usr/local/cpanel/bin/unregister_appconfig wp_temp_accounts 2>/dev/null || true
 /usr/local/cpanel/bin/register_appconfig /var/cpanel/apps/wp_temp_accounts.conf
 
 # Register with cPanel
 log_info "Registering with cPanel..."
 install -m 644 packaging/wp_temp_accounts_cpanel.conf /var/cpanel/apps/
+# Verify file exists and is readable
+if [ ! -r /var/cpanel/apps/wp_temp_accounts_cpanel.conf ]; then
+    log_error "cPanel AppConfig file not readable"
+    exit 1
+fi
 /usr/local/cpanel/bin/unregister_appconfig wp_temp_accounts_cpanel 2>/dev/null || true
 /usr/local/cpanel/bin/register_appconfig /var/cpanel/apps/wp_temp_accounts_cpanel.conf
 
