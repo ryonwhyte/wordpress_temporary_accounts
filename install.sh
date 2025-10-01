@@ -110,10 +110,16 @@ install -m 644 packaging/wp_temp_accounts_icon.png /usr/local/cpanel/base/fronte
 log_info "Registering with WHM..."
 
 # Ensure directory exists
-mkdir -p /var/cpanel/apps
+if ! mkdir -p /var/cpanel/apps 2>&1; then
+    log_error "Failed to create /var/cpanel/apps directory"
+    exit 1
+fi
 
-# Write AppConfig directly (more reliable than install command)
-cat > /var/cpanel/apps/wp_temp_accounts.conf <<'EOF'
+log_info "Writing AppConfig to /var/cpanel/apps/wp_temp_accounts.conf"
+
+# Write AppConfig to temp file first, then move it
+TEMP_CONF=$(mktemp)
+cat > "$TEMP_CONF" <<'EOF'
 name=wp_temp_accounts
 service=whostmgr
 group=plugins
@@ -124,6 +130,16 @@ displayname=WordPress Temporary Accounts
 icon=/cgi/wp_temp_accounts/wp_temp_accounts_icon.png
 acls=all
 EOF
+
+# Verify temp file was created and has content
+if [ ! -s "$TEMP_CONF" ]; then
+    log_error "Failed to write AppConfig to temp file"
+    rm -f "$TEMP_CONF"
+    exit 1
+fi
+
+# Move to final location
+mv "$TEMP_CONF" /var/cpanel/apps/wp_temp_accounts.conf
 
 # Set permissions
 chmod 644 /var/cpanel/apps/wp_temp_accounts.conf
@@ -150,8 +166,9 @@ fi
 # Register with cPanel
 log_info "Registering with cPanel..."
 
-# Write cPanel AppConfig directly
-cat > /var/cpanel/apps/wp_temp_accounts_cpanel.conf <<'EOF'
+# Write cPanel AppConfig to temp file first
+TEMP_CPANEL_CONF=$(mktemp)
+cat > "$TEMP_CPANEL_CONF" <<'EOF'
 name=wp_temp_accounts_cpanel
 service=cpanel
 group=software
@@ -162,6 +179,16 @@ displayname=WordPress Temporary Accounts
 icon=/frontend/paper_lantern/wp_temp_accounts/wp_temp_accounts_icon.png
 acls=all
 EOF
+
+# Verify temp file was created and has content
+if [ ! -s "$TEMP_CPANEL_CONF" ]; then
+    log_error "Failed to write cPanel AppConfig to temp file"
+    rm -f "$TEMP_CPANEL_CONF"
+    exit 1
+fi
+
+# Move to final location
+mv "$TEMP_CPANEL_CONF" /var/cpanel/apps/wp_temp_accounts_cpanel.conf
 
 # Set permissions
 chmod 644 /var/cpanel/apps/wp_temp_accounts_cpanel.conf
