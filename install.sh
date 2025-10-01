@@ -163,15 +163,34 @@ fi
 
 log_info "File moved successfully"
 
-# Set permissions
-chmod 644 /var/cpanel/apps/wp_temp_accounts.conf
-chown root:root /var/cpanel/apps/wp_temp_accounts.conf
-
-# Verify file was created
+# Verify file exists immediately after move
 if [ ! -f /var/cpanel/apps/wp_temp_accounts.conf ]; then
-    log_error "WHM AppConfig file not created"
+    log_error "File disappeared immediately after move!"
+    ls -la /var/cpanel/apps/ | grep wp
     exit 1
 fi
+
+log_info "File exists after move, setting permissions..."
+
+# Set permissions
+if ! chmod 644 /var/cpanel/apps/wp_temp_accounts.conf; then
+    log_error "chmod failed"
+    exit 1
+fi
+
+if ! chown root:root /var/cpanel/apps/wp_temp_accounts.conf; then
+    log_error "chown failed"
+    exit 1
+fi
+
+# Verify file still exists after permissions
+if [ ! -f /var/cpanel/apps/wp_temp_accounts.conf ]; then
+    log_error "File disappeared after setting permissions!"
+    ls -la /var/cpanel/apps/ | grep wp
+    exit 1
+fi
+
+log_info "Permissions set successfully"
 
 # Clean up any old registrations
 /usr/local/cpanel/bin/unregister_appconfig wordpress_temporary_accounts 2>/dev/null || true
