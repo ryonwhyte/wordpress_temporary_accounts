@@ -140,6 +140,7 @@ log_info "Created temp file: $TEMP_CONF"
 cat > "$TEMP_CONF" <<'EOF'
 name=wp_temp_accounts
 service=whostmgr
+user=root
 group=plugins
 itemorder=1
 url=/cgi/wp_temp_accounts/wp_temp_accounts.cgi
