@@ -1,0 +1,21 @@
+[Unit]
+Description=WordPress Temporary Accounts Daemon
+After=network.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+WorkingDirectory=/usr/local/lib/wp-tempd
+ExecStart=/usr/bin/node /usr/local/lib/wp-tempd/server.js
+Restart=on-failure
+RestartSec=3
+StandardOutput=journal
+StandardError=journal
+
+# Security
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WordPress Temporary Accounts</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>WordPress Temporary Accounts</h1>
+            <div id="health-status" class="status">Checking...</div>
+        </header>
+
+        <div id="error-message" class="error-box" style="display:none;"></div>
+
+        <!-- WordPress Installations Section -->
+        <div id="wp-installs-section" class="card">
+            <h2>Your WordPress Installations</h2>
+            <button id="scan-btn" class="btn btn-primary">Scan for WordPress Sites</button>
+            <div id="wp-installs-list" style="margin-top:20px;"></div>
+        </div>
+
+        <!-- Create User Section -->
+        <div id="create-user-section" class="card" style="display:none;">
+            <h2>Create Temporary User</h2>
+            <div class="info-box">
+                Selected Site: <strong id="selected-site"></strong>
+            </div>
+
+            <div class="form-group">
+                <label>User Role</label>
+                <select id="user-role" class="form-control">
+                    <option value="administrator">Administrator</option>
+                    <option value="editor">Editor</option>
+                    <option value="author">Author</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label>Expiry Time (hours)</label>
+                <input type="number" id="expiry-hours" class="form-control" value="24" min="1" max="168">
+            </div>
+
+            <button id="create-btn" class="btn btn-success">Create Temporary User</button>
+        </div>
+
+        <!-- Result Section -->
+        <div id="result-section" class="card" style="display:none;">
+            <h2>User Created Successfully!</h2>
+            <div id="result-details" class="result-box"></div>
+            <button id="create-another-btn" class="btn btn-secondary">Create Another User</button>
+        </div>
+
+        <!-- Loading Overlay -->
+        <div id="loading" class="loading" style="display:none;">
+            <div class="spinner"></div>
+            <div>Processing...</div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
