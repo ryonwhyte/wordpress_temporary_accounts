@@ -93,6 +93,7 @@ fi
 # Install WHM files
 log_info "Installing WHM integration..."
 install -m 755 whm/wp_temp_accounts.cgi /usr/local/cpanel/whostmgr/docroot/cgi/wp_temp_accounts/
+install -m 755 whm/api.cgi /usr/local/cpanel/whostmgr/docroot/cgi/wp_temp_accounts/
 install -m 644 whm/frontend/index.html /usr/local/cpanel/whostmgr/docroot/cgi/wp_temp_accounts/
 install -m 644 whm/frontend/app.js /usr/local/cpanel/whostmgr/docroot/cgi/wp_temp_accounts/
 install -m 644 whm/frontend/style.css /usr/local/cpanel/whostmgr/docroot/cgi/wp_temp_accounts/

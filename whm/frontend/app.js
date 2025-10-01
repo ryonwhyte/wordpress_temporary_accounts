@@ -15,7 +15,7 @@ async function callAPI(action, payload = {}) {
     showLoading();
 
     try {
-        const response = await fetch('./wp_temp_accounts.cgi', {
+        const response = await fetch('./api.cgi', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ action, payload })

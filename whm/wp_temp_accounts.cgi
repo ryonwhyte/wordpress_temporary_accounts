@@ -1,58 +1,39 @@
-#!/usr/local/cpanel/3rdparty/bin/perl
+#!/usr/bin/sh
+eval 'if [ -x /usr/local/cpanel/3rdparty/bin/perl ]; then exec /usr/local/cpanel/3rdparty/bin/perl -x -- $0 ${1+"$@"}; else exec /usr/bin/perl -x -- $0 ${1+"$@"};fi'
+if 0;
+#!/usr/bin/perl
+
+#WHMADDON:wp_temp_accounts:WordPress Temporary Accounts
+
 use strict;
 use warnings;
-use IO::Socket::UNIX;
-use JSON ();
+use lib '/usr/local/cpanel';
+use Whostmgr::ACLS();
 
-$|=1;
-binmode STDIN;
-binmode STDOUT;
+Whostmgr::ACLS::init_acls();
 
-sub out {
-    print "Content-Type: application/json\r\n\r\n", JSON::encode_json($_[0]);
-    exit 0;
+run() unless caller();
+
+sub run {
+    print "Content-type: text/html; charset=utf-8\n\n";
+
+    # Check permissions
+    if (!Whostmgr::ACLS::hasroot()) {
+        print "<h1>Access Denied</h1>\n";
+        print "<p>You do not have access to the WordPress Temporary Accounts plugin.</p>\n";
+        exit;
+    }
+
+    # Serve the HTML file
+    my $html_file = '/usr/local/cpanel/whostmgr/docroot/cgi/wp_temp_accounts/index.html';
+    if (open my $fh, '<', $html_file) {
+        local $/;
+        print <$fh>;
+        close $fh;
+    } else {
+        print "<h1>Error</h1>\n";
+        print "<p>Cannot load plugin interface.</p>\n";
+    }
+
+    exit;
 }
-
-# Security: Validate WHM context
-(($ENV{REMOTE_USER}//'') eq 'root') or out({
-    ok => JSON::false,
-    error => { code => 'not_whm_root', message => 'This endpoint must be called from WHM' }
-});
-
-(($ENV{SERVER_PORT}//'') =~ /^(2086|2087)$/) or out({
-    ok => JSON::false,
-    error => { code => 'bad_port', message => 'Invalid server port' }
-});
-
-# Read request body
-my $body = '';
-while (read STDIN, my $b, 8192) {
-    $body .= $b;
-    length($body) < 65536 or out({
-        ok => JSON::false,
-        error => { code => 'payload_too_large', message => 'Request payload too large' }
-    });
-}
-
-# Connect to Unix socket
-my $sock = IO::Socket::UNIX->new(
-    Type => SOCK_STREAM,
-    Peer => "/var/run/wp-tempd.sock"
-) or out({
-    ok => JSON::false,
-    error => { code => 'daemon_unavailable', message => 'Cannot connect to daemon' }
-});
-
-# Send request
-print $sock ($body || '{}');
-shutdown($sock, 1);
-
-# Read response
-my $resp = do { local $/; <$sock> } // '';
-$resp or out({
-    ok => JSON::false,
-    error => { code => 'empty_response', message => 'No response from daemon' }
-});
-
-# Return response
-print "Content-Type: application/json\r\n\r\n$resp";
