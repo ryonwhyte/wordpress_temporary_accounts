@@ -11,6 +11,9 @@ use warnings;
 use lib '/usr/local/cpanel';
 use Whostmgr::ACLS();
 
+# Ensure we're running as root in WHM context
+$ENV{REMOTE_USER} = 'root' unless $ENV{REMOTE_USER};
+
 Whostmgr::ACLS::init_acls();
 
 run() unless caller();

@@ -140,14 +140,13 @@ log_info "Created temp file: $TEMP_CONF"
 cat > "$TEMP_CONF" <<'EOF'
 name=wp_temp_accounts
 service=whostmgr
-user=root
-group=plugins
-itemorder=1
 url=/cgi/wp_temp_accounts/wp_temp_accounts.cgi
-entryurl=wp_temp_accounts/wp_temp_accounts.cgi
-displayname=WordPress Temporary Accounts
-icon=/cgi/wp_temp_accounts/wp_temp_accounts_icon.png
+user=root
 acls=all
+displayname=WordPress Temporary Accounts
+entryurl=wp_temp_accounts/wp_temp_accounts.cgi
+target=_self
+icon=wp_temp_accounts_icon.png
 EOF
 
 # Verify temp file was created and has content
