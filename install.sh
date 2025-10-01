@@ -117,8 +117,21 @@ fi
 
 log_info "Writing AppConfig to /var/cpanel/apps/wp_temp_accounts.conf"
 
+# Check if /var/cpanel/apps is writable
+if [ ! -w /var/cpanel/apps ]; then
+    log_error "/var/cpanel/apps is not writable"
+    ls -ld /var/cpanel/apps
+    exit 1
+fi
+
 # Write AppConfig to temp file first, then move it
-TEMP_CONF=$(mktemp)
+TEMP_CONF=$(mktemp) || {
+    log_error "Failed to create temp file"
+    exit 1
+}
+
+log_info "Created temp file: $TEMP_CONF"
+
 cat > "$TEMP_CONF" <<'EOF'
 name=wp_temp_accounts
 service=whostmgr
@@ -138,8 +151,17 @@ if [ ! -s "$TEMP_CONF" ]; then
     exit 1
 fi
 
+log_info "Temp file size: $(wc -c < "$TEMP_CONF") bytes"
+log_info "Moving temp file to /var/cpanel/apps/wp_temp_accounts.conf"
+
 # Move to final location
-mv "$TEMP_CONF" /var/cpanel/apps/wp_temp_accounts.conf
+if ! mv "$TEMP_CONF" /var/cpanel/apps/wp_temp_accounts.conf; then
+    log_error "Failed to move temp file to /var/cpanel/apps/"
+    rm -f "$TEMP_CONF"
+    exit 1
+fi
+
+log_info "File moved successfully"
 
 # Set permissions
 chmod 644 /var/cpanel/apps/wp_temp_accounts.conf
