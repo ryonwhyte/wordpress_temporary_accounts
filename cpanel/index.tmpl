@@ -327,9 +327,15 @@ WRAPPER '_assets/master.html.tt'
             return;
         }
 
-        const username = usernameEl.value.trim();
-        const email = emailEl.value.trim();
-        const days = parseFloat(expirationEl.value);
+        // Check if value property exists
+        if (usernameEl.value === undefined || emailEl.value === undefined || expirationEl.value === undefined) {
+            showError('Form fields not properly initialized');
+            return;
+        }
+
+        const username = (usernameEl.value || '').trim();
+        const email = (emailEl.value || '').trim();
+        const days = parseFloat(expirationEl.value || '7');
 
         if (!username || !email) {
             showError('Username and email are required');

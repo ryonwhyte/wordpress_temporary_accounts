@@ -306,18 +306,40 @@ WRAPPER 'master_templates/master.tmpl'
 
     // Create User
     async function createUser() {
+        console.log('createUser called');
+
         const usernameEl = document.getElementById('username');
         const emailEl = document.getElementById('email');
         const expirationEl = document.getElementById('expiration');
 
+        console.log('Elements:', usernameEl, emailEl, expirationEl);
+
         if (!usernameEl || !emailEl || !expirationEl) {
             showError('Form fields not found');
+            console.error('Missing elements!');
             return;
         }
 
-        const username = usernameEl.value.trim();
-        const email = emailEl.value.trim();
-        const days = parseFloat(expirationEl.value);
+        console.log('usernameEl.value:', usernameEl.value, 'type:', typeof usernameEl.value);
+        console.log('emailEl.value:', emailEl.value, 'type:', typeof emailEl.value);
+        console.log('expirationEl.value:', expirationEl.value, 'type:', typeof expirationEl.value);
+
+        // Check if value property exists
+        if (usernameEl.value === undefined || emailEl.value === undefined || expirationEl.value === undefined) {
+            showError('Form fields not properly initialized - check console for details');
+            console.error('Value is undefined!', {
+                username: usernameEl.value,
+                email: emailEl.value,
+                expiration: expirationEl.value
+            });
+            return;
+        }
+
+        const username = (usernameEl.value || '').trim();
+        const email = (emailEl.value || '').trim();
+        const days = parseFloat(expirationEl.value || '7');
+
+        console.log('Processed values:', { username, email, days });
 
         if (!username || !email) {
             showError('Username and email are required');
