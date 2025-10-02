@@ -132,8 +132,18 @@ WRAPPER 'master_templates/master.tmpl'
                     <input type="email" id="email" class="form-control" placeholder="temp@example.com">
                 </div>
                 <div class="form-group">
-                    <label for="days">[% locale.maketext("Expiration (days):") %]</label>
-                    <input type="number" id="days" class="form-control" value="7" min="1" max="365">
+                    <label for="expiration">[% locale.maketext("Expiration:") %]</label>
+                    <select id="expiration" class="form-control">
+                        <option value="0.0208">30 Minutes</option>
+                        <option value="0.0417">1 Hour</option>
+                        <option value="0.0833">2 Hours</option>
+                        <option value="0.25">6 Hours</option>
+                        <option value="0.5">12 Hours</option>
+                        <option value="1">1 Day</option>
+                        <option value="7" selected>7 Days</option>
+                        <option value="14">14 Days</option>
+                        <option value="30">30 Days</option>
+                    </select>
                 </div>
                 <button id="create-btn" class="btn btn-success">
                     [% locale.maketext("Create Temporary User") %]
@@ -296,12 +306,27 @@ WRAPPER 'master_templates/master.tmpl'
 
     // Create User
     async function createUser() {
-        const username = document.getElementById('username').value;
-        const email = document.getElementById('email').value;
-        const days = document.getElementById('days').value;
+        const username = document.getElementById('username').value.trim();
+        const email = document.getElementById('email').value.trim();
+        const days = parseFloat(document.getElementById('expiration').value);
 
         if (!username || !email) {
             showError('Username and email are required');
+            return;
+        }
+
+        if (username.length < 3 || username.length > 60) {
+            showError('Username must be between 3 and 60 characters');
+            return;
+        }
+
+        if (!/^[A-Za-z0-9._-]+$/.test(username)) {
+            showError('Username can only contain letters, numbers, dots, underscores, and hyphens');
+            return;
+        }
+
+        if (!/^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/.test(email)) {
+            showError('Please enter a valid email address');
             return;
         }
 
@@ -310,7 +335,7 @@ WRAPPER 'master_templates/master.tmpl'
             site_path: state.selectedSite,
             username,
             email,
-            days: parseInt(days)
+            days: days
         });
 
         document.getElementById('username').value = '';

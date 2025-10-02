@@ -97,8 +97,10 @@ sub validate_email {
 
 sub validate_days {
     my ($days) = @_;
-    return 0 unless defined $days && $days =~ /^\d+$/;
-    return $days >= 1 && $days <= 365;  # 1 day to 1 year max
+    return 0 unless defined $days;
+    # Accept decimal values (e.g., 0.0208 for 30 minutes)
+    return 0 unless $days =~ /^\d+\.?\d*$/;
+    return $days >= 0.0208 && $days <= 365;  # 30 minutes to 1 year max
 }
 
 sub validate_site_path {

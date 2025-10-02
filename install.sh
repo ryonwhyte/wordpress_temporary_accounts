@@ -58,16 +58,30 @@ log_info "Installing WHM template..."
 mkdir -p /usr/local/cpanel/whostmgr/docroot/templates/wp_temp_accounts
 install -m 644 whm/wp_temp_accounts.tmpl /usr/local/cpanel/whostmgr/docroot/templates/wp_temp_accounts/
 
-# Install cPanel plugin
+# Install cPanel plugin (modern dynamicui method)
 log_info "Installing cPanel plugin..."
 
-# Jupiter (primary theme)
-install -m 755 cpanel/wp_temp_accounts.cgi /usr/local/cpanel/base/frontend/jupiter/wp_temp_accounts/index.cgi
-install -m 644 packaging/wp_temp_accounts_icon.png /usr/local/cpanel/base/frontend/jupiter/wp_temp_accounts/
+# Create plugin directory
+mkdir -p /usr/local/cpanel/base/frontend/jupiter/wp_temp_accounts
 
-# Paper Lantern (legacy fallback)
-install -m 755 cpanel/wp_temp_accounts.cgi /usr/local/cpanel/base/frontend/paper_lantern/wp_temp_accounts/index.cgi 2>/dev/null || true
-install -m 644 packaging/wp_temp_accounts_icon.png /usr/local/cpanel/base/frontend/paper_lantern/wp_temp_accounts/ 2>/dev/null || true
+# Install CGI script
+install -m 755 cpanel/index.live.cgi /usr/local/cpanel/base/frontend/jupiter/wp_temp_accounts/
+
+# Install icons
+install -m 644 cpanel/group_wordpress.svg /usr/local/cpanel/base/frontend/jupiter/wp_temp_accounts/
+install -m 644 cpanel/wp_temp_accounts.svg /usr/local/cpanel/base/frontend/jupiter/wp_temp_accounts/
+
+# Install plugin using official install_plugin script
+if [ -x /usr/local/cpanel/scripts/install_plugin ]; then
+    log_info "Registering cPanel plugin with dynamicui..."
+    /usr/local/cpanel/scripts/install_plugin /usr/local/cpanel/base/frontend/jupiter/wp_temp_accounts --theme jupiter --json cpanel/install.json
+else
+    log_info "install_plugin script not found, using legacy method..."
+    # Fallback to old method if install_plugin doesn't exist
+    mkdir -p /usr/local/cpanel/base/frontend/paper_lantern/wp_temp_accounts 2>/dev/null || true
+    install -m 755 cpanel/index.live.cgi /usr/local/cpanel/base/frontend/paper_lantern/wp_temp_accounts/index.cgi 2>/dev/null || true
+    install -m 644 packaging/wp_temp_accounts_icon.png /usr/local/cpanel/base/frontend/paper_lantern/wp_temp_accounts/ 2>/dev/null || true
+fi
 
 # Register with WHM
 log_info "Registering with WHM..."
@@ -133,61 +147,12 @@ log_info "AppConfig created successfully"
 
 log_info "WHM plugin registered successfully"
 
-# Register with cPanel
-log_info "Registering with cPanel..."
-
-# Clean up old cPanel registration FIRST
+# Note: cPanel plugin registration is handled by install_plugin script above (dynamicui method)
+# Clean up old AppConfig registration if it exists
 /usr/local/cpanel/bin/unregister_appconfig wp_temp_accounts_cpanel 2>/dev/null || true
+rm -f /var/cpanel/apps/wp_temp_accounts_cpanel.conf 2>/dev/null || true
 
-# Write cPanel AppConfig to temp file
-TEMP_CPANEL_CONF=$(mktemp) || {
-    log_error "Failed to create temp file for cPanel"
-    exit 1
-}
-
-cat > "$TEMP_CPANEL_CONF" <<'EOF'
-name=wp_temp_accounts_cpanel
-service=cpanel
-url=/frontend/jupiter/wp_temp_accounts/index.cgi
-displayname=WordPress Temporary Accounts
-entryurl=wp_temp_accounts/index.cgi
-target=_self
-icon=wp_temp_accounts_icon.png
-EOF
-
-# Verify temp file
-if [ ! -s "$TEMP_CPANEL_CONF" ]; then
-    log_error "Failed to write cPanel AppConfig to temp file"
-    rm -f "$TEMP_CPANEL_CONF"
-    exit 1
-fi
-
-# Move to final location
-if ! mv "$TEMP_CPANEL_CONF" /var/cpanel/apps/wp_temp_accounts_cpanel.conf; then
-    log_error "Failed to move cPanel AppConfig"
-    rm -f "$TEMP_CPANEL_CONF"
-    exit 1
-fi
-
-# Set permissions
-chmod 644 /var/cpanel/apps/wp_temp_accounts_cpanel.conf
-chown root:root /var/cpanel/apps/wp_temp_accounts_cpanel.conf
-
-# Verify file exists
-if [ ! -f /var/cpanel/apps/wp_temp_accounts_cpanel.conf ]; then
-    log_error "cPanel AppConfig file not created"
-    exit 1
-fi
-
-# Register cPanel config
-/usr/local/cpanel/bin/register_appconfig /var/cpanel/apps/wp_temp_accounts_cpanel.conf || {
-    log_error "Failed to register cPanel AppConfig"
-    log_error "File contents:"
-    cat /var/cpanel/apps/wp_temp_accounts_cpanel.conf
-    exit 1
-}
-
-log_info "cPanel plugin registered successfully"
+log_info "cPanel plugin installation complete"
 
 # Set proper ownership and permissions
 log_info "Setting file permissions..."
