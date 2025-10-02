@@ -128,14 +128,28 @@ sub handle_api_request {
 
     # Read request body with size limit
     my $body = '';
-    while (read STDIN, my $chunk, 8192) {
-        $body .= $chunk;
-        last if length($body) >= 65536;  # 64KB limit for DoS protection
+
+    # Check if CGI.pm already read the body
+    my $postdata = $cgi->param('POSTDATA');
+    if (defined $postdata && $postdata ne '') {
+        $body = $postdata;
+    } else {
+        # Read from STDIN directly
+        my $content_length = $ENV{CONTENT_LENGTH} || 0;
+        if ($content_length > 0) {
+            read(STDIN, $body, $content_length);
+        }
+    }
+
+    # Handle empty body
+    unless ($body && $body ne '') {
+        print_json_error('invalid_json', 'Empty request body');
+        return;
     }
 
     my $request = eval { Cpanel::JSON::Load($body) };
     if ($@) {
-        print_json_error('invalid_json', 'Invalid JSON request');
+        print_json_error('invalid_json', "Invalid JSON: $@");
         return;
     }
 
@@ -175,39 +189,38 @@ sub handle_api_request {
 ###############################################################################
 
 sub render_ui {
-    print "Content-type: text/html; charset=utf-8\n\n";
+    # Use WHM's template system for proper integration
+    use Whostmgr::HTMLInterface();
+
+    Whostmgr::HTMLInterface::defheader(
+        'WordPress Temporary Accounts',
+        '',
+        ''
+    );
 
     print <<'HTML';
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>WordPress Temporary Accounts</title>
     <style>
-        /* cPanel Jupiter Theme Compatible Styling */
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-            font-family: 'Open Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            background: #f7f9fc;
+        /* WHM-Integrated Plugin Styling */
+        .container { max-width: 100%; }
+        .whm-section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #e3e8ee;
+        }
+        .whm-section-header h2 {
+            font-size: 24px;
+            font-weight: 300;
+            color: #4a5568;
+            margin: 0;
+        }
+        .whm-main-content {
+            background: white;
             padding: 20px;
-            font-size: 13px;
-            color: #3c4858;
-        }
-        .container { max-width: 1400px; margin: 0 auto; }
-        header {
-            background: linear-gradient(135deg, #1d8cf8 0%, #3358f4 100%);
-            padding: 25px 30px;
-            border-radius: 6px;
-            margin-bottom: 25px;
-            box-shadow: 0 4px 20px 0px rgba(0, 0, 0, 0.14), 0 7px 10px -5px rgba(29, 140, 248, 0.4);
-        }
-        h1 {
-            color: white;
-            font-size: 22px;
-            margin-bottom: 5px;
-            font-weight: 400;
-            letter-spacing: 0.3px;
+            border-radius: 4px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
         }
         .status {
             display: inline-block;
@@ -218,23 +231,22 @@ sub render_ui {
             text-transform: uppercase;
             letter-spacing: 0.5px;
         }
-        .status.ok { background: rgba(255,255,255,0.2); color: white; }
-        .status.error { background: rgba(255, 61, 61, 0.9); color: white; }
+        .status.ok { background: #48bb78; color: white; }
+        .status.error { background: #f56565; color: white; }
         .card {
-            background: white;
-            padding: 25px;
-            border-radius: 6px;
-            margin-bottom: 25px;
-            box-shadow: 0 1px 4px 0 rgba(0, 0, 0, 0.14);
-            border: 1px solid #e3e3e3;
-        }
-        h2 {
-            color: #2c3e50;
-            font-size: 16px;
+            background: #f7fafc;
+            padding: 20px;
+            border-radius: 4px;
             margin-bottom: 20px;
+            border: 1px solid #e2e8f0;
+        }
+        .card h2 {
+            color: #2d3748;
+            font-size: 18px;
+            margin-bottom: 15px;
             font-weight: 600;
             padding-bottom: 10px;
-            border-bottom: 2px solid #1d8cf8;
+            border-bottom: 1px solid #e2e8f0;
         }
         .form-group { margin-bottom: 20px; }
         label {
@@ -262,35 +274,31 @@ sub render_ui {
             box-shadow: 0 0 0 3px rgba(29, 140, 248, 0.1);
         }
         button {
-            background: linear-gradient(60deg, #1d8cf8, #3358f4);
+            background: #4299e1;
             color: white;
-            border: none;
-            padding: 11px 24px;
+            border: 1px solid #3182ce;
+            padding: 8px 16px;
             border-radius: 4px;
             cursor: pointer;
-            font-size: 13px;
-            font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            box-shadow: 0 4px 6px rgba(50, 50, 93, 0.11), 0 1px 3px rgba(0, 0, 0, 0.08);
-            transition: all 0.15s ease;
+            font-size: 14px;
+            font-weight: 500;
+            transition: background 0.2s ease;
         }
         button:hover {
-            transform: translateY(-1px);
-            box-shadow: 0 7px 14px rgba(50, 50, 93, 0.1), 0 3px 6px rgba(0, 0, 0, 0.08);
+            background: #3182ce;
         }
         button:disabled {
-            background: #95a5a6;
+            background: #cbd5e0;
+            border-color: #a0aec0;
             cursor: not-allowed;
-            transform: none;
-            box-shadow: none;
+            opacity: 0.6;
         }
         .btn-danger {
-            background: linear-gradient(60deg, #f5365c, #f56036);
-            box-shadow: 0 4px 6px rgba(245, 54, 92, 0.3), 0 1px 3px rgba(0, 0, 0, 0.08);
+            background: #e53e3e;
+            border-color: #c53030;
         }
         .btn-danger:hover {
-            box-shadow: 0 7px 14px rgba(245, 54, 92, 0.25), 0 3px 6px rgba(0, 0, 0, 0.08);
+            background: #c53030;
         }
         #loading {
             display: none;
@@ -337,18 +345,17 @@ sub render_ui {
         tr:hover { background: #f8f9fb; }
         tr:last-child td { border-bottom: none; }
     </style>
-</head>
-<body>
+
     <div class="container">
-        <header>
-            <h1>WordPress Temporary Accounts</h1>
+        <div class="whm-section-header">
+            <h2>WordPress Temporary Accounts</h2>
             <div id="health-status" class="status ok">System: OK</div>
-        </header>
+        </div>
 
         <div id="error-message"></div>
         <div id="loading">Loading...</div>
 
-        <main>
+        <div class="whm-main-content">
             <!-- Step 1: Select cPanel Account -->
             <section class="card">
                 <h2>1. Select cPanel Account</h2>
@@ -408,8 +415,8 @@ sub render_ui {
                     </tbody>
                 </table>
             </section>
-        </main>
-    </div>
+        </div><!-- whm-main-content -->
+    </div><!-- container -->
 
     <script>
         // State
@@ -562,9 +569,9 @@ sub render_ui {
             document.getElementById('health-status').className = 'status error';
         });
     </script>
-</body>
-</html>
 HTML
+
+    Whostmgr::HTMLInterface::deffooter();
 }
 
 ###############################################################################

@@ -124,14 +124,28 @@ sub handle_api_request {
 
     # Read request body with size limit
     my $body = '';
-    while (read STDIN, my $chunk, 8192) {
-        $body .= $chunk;
-        last if length($body) >= 65536;  # 64KB limit for DoS protection
+
+    # Check if CGI.pm already read the body
+    my $postdata = $cgi->param('POSTDATA');
+    if (defined $postdata && $postdata ne '') {
+        $body = $postdata;
+    } else {
+        # Read from STDIN directly
+        my $content_length = $ENV{CONTENT_LENGTH} || 0;
+        if ($content_length > 0) {
+            read(STDIN, $body, $content_length);
+        }
+    }
+
+    # Handle empty body
+    unless ($body && $body ne '') {
+        print_json_error('invalid_json', 'Empty request body');
+        return;
     }
 
     my $request = eval { Cpanel::JSON::Load($body) };
     if ($@) {
-        print_json_error('invalid_json', 'Invalid JSON request');
+        print_json_error('invalid_json', "Invalid JSON: $@");
         return;
     }
 
