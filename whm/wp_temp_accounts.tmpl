@@ -361,13 +361,18 @@ WRAPPER 'master_templates/master.tmpl'
             return;
         }
 
-        await callAPI('create_temp_user', {
+        const result = await callAPI('create_temp_user', {
             cpanel_user: state.selectedAccount,
             site_path: state.selectedSite,
             username,
             email,
             days: days
         });
+
+        // Show password to user
+        if (result && result.password) {
+            alert(`User created successfully!\n\nUsername: ${result.username}\nPassword: ${result.password}\n\nPlease copy this password now - it cannot be retrieved later.`);
+        }
 
         document.getElementById('wp-temp-username').value = '';
         document.getElementById('wp-temp-email').value = '';

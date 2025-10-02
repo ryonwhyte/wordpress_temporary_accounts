@@ -293,18 +293,25 @@ WRAPPER '_assets/master.html.tt'
     // Load Users
     async function loadUsers() {
         const sitePath = document.getElementById('wp-site').value;
-        if (!sitePath) return;
+        if (!sitePath) {
+            console.log('loadUsers: No site path selected');
+            return;
+        }
 
+        console.log('loadUsers: Loading users for', sitePath);
         state.selectedSite = sitePath;
         document.getElementById('create-user-section').style.display = 'block';
         document.getElementById('users-section').style.display = 'block';
 
         const users = await callAPI('list_temp_users', { site_path: sitePath });
+        console.log('loadUsers: Received users:', users);
         const tbody = document.getElementById('users-table');
 
-        if (users.length === 0) {
+        if (!users || users.length === 0) {
+            console.log('loadUsers: No users found');
             tbody.innerHTML = '<tr><td colspan="4">No temporary users found</td></tr>';
         } else {
+            console.log('loadUsers: Displaying', users.length, 'users');
             tbody.innerHTML = users.map(u => `
                 <tr>
                     <td>${u.username}</td>
@@ -357,12 +364,17 @@ WRAPPER '_assets/master.html.tt'
             return;
         }
 
-        await callAPI('create_temp_user', {
+        const result = await callAPI('create_temp_user', {
             site_path: state.selectedSite,
             username,
             email,
             days: days
         });
+
+        // Show password to user
+        if (result && result.password) {
+            alert(`User created successfully!\n\nUsername: ${result.username}\nPassword: ${result.password}\n\nPlease copy this password now - it cannot be retrieved later.`);
+        }
 
         document.getElementById('wp-temp-username').value = '';
         document.getElementById('wp-temp-email').value = '';

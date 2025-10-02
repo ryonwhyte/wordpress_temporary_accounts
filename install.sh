@@ -189,6 +189,15 @@ chmod 0750 /var/log/wp_temp_accounts
 chown root:root /var/cache/wp_temp_accounts
 chmod 0750 /var/cache/wp_temp_accounts
 
+# Install cleanup script
+log_info "Installing cleanup script..."
+install -m 755 cleanup_expired.pl /usr/local/cpanel/scripts/wp_temp_accounts_cleanup
+
+# Set up cron job for automatic cleanup (runs every hour)
+log_info "Setting up cron job..."
+CRON_JOB="0 * * * * /usr/local/cpanel/scripts/wp_temp_accounts_cleanup >/dev/null 2>&1"
+(crontab -l 2>/dev/null | grep -v "wp_temp_accounts_cleanup"; echo "$CRON_JOB") | crontab -
+
 # Clear caches and restart services
 log_info "Clearing template cache..."
 rm -f /usr/local/cpanel/base/frontend/jupiter/.cpanelcache/* 2>/dev/null || true
@@ -214,4 +223,9 @@ echo "  • Pure Perl (no Node.js dependency)"
 echo "  • WHM: Manage all sites (root access)"
 echo "  • cPanel: Users manage their own sites"
 echo "  • WP-CLI integration for WordPress operations"
+echo "  • Automatic cleanup: Cron runs hourly to remove expired users"
+echo ""
+echo "Logs:"
+echo "  • Cleanup log: /var/log/wp_temp_accounts/cleanup.log"
+echo "  • cPanel log: /var/log/wp_temp_accounts/cpanel.log"
 echo ""

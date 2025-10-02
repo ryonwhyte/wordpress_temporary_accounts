@@ -84,6 +84,14 @@ rm -rf /var/log/wp_temp_accounts
 log_info "Removing cache directory..."
 rm -rf /var/cache/wp_temp_accounts
 
+# Remove cleanup script
+log_info "Removing cleanup script..."
+rm -f /usr/local/cpanel/scripts/wp_temp_accounts_cleanup
+
+# Remove cron job
+log_info "Removing cron job..."
+crontab -l 2>/dev/null | grep -v "wp_temp_accounts_cleanup" | crontab - 2>/dev/null || true
+
 # Verify removal
 echo ""
 log_info "Verifying removal..."
