@@ -1,0 +1,389 @@
+[%
+# cPanel Template for WordPress Temporary Accounts
+# Uses cPanel's template system for proper theme integration
+
+SET CPANEL.CPVAR.dprefix = "../";
+
+# Set page metadata
+WRAPPER '_assets/master.html.tt'
+    page_title = 'WordPress Temporary Accounts'
+    page_scripts = []
+    page_styles = [];
+%]
+
+<style type="text/css">
+    /* Plugin-specific styling */
+    .wp-temp-container { max-width: 100%; }
+    .status-badge {
+        display: inline-block;
+        padding: 6px 12px;
+        border-radius: 3px;
+        font-size: 12px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    .status-ok { background: #48bb78; color: white; }
+    .status-error { background: #f56565; color: white; }
+    .wp-card {
+        background: #fff;
+        padding: 20px;
+        border-radius: 4px;
+        margin-bottom: 20px;
+        border: 1px solid #e2e8f0;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    }
+    .wp-card h2 {
+        color: #2d3748;
+        font-size: 18px;
+        margin-bottom: 15px;
+        font-weight: 600;
+        padding-bottom: 10px;
+        border-bottom: 1px solid #e2e8f0;
+    }
+    #loading {
+        display: none;
+        padding: 20px;
+        text-align: center;
+        background: #f7fafc;
+        border-radius: 4px;
+        margin: 20px 0;
+        font-weight: 600;
+        color: #1d8cf8;
+    }
+    #error-message {
+        display: none;
+        background: #fff5f5;
+        color: #c53030;
+        padding: 16px;
+        border-radius: 4px;
+        margin-bottom: 20px;
+        border-left: 4px solid #f56565;
+        font-weight: 500;
+    }
+    .form-group {
+        margin-bottom: 15px;
+    }
+    .form-group label {
+        display: block;
+        margin-bottom: 5px;
+        font-weight: 600;
+        color: #4a5568;
+    }
+    .form-control {
+        width: 100%;
+        padding: 8px 12px;
+        border: 1px solid #cbd5e0;
+        border-radius: 4px;
+        font-size: 14px;
+    }
+    .btn {
+        padding: 10px 20px;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 14px;
+        font-weight: 600;
+        transition: all 0.2s;
+    }
+    .btn-primary {
+        background: #1d8cf8;
+        color: white;
+    }
+    .btn-primary:hover {
+        background: #0d7dea;
+    }
+    .btn-success {
+        background: #48bb78;
+        color: white;
+    }
+    .btn-success:hover {
+        background: #38a169;
+    }
+    .btn-danger {
+        background: #f56565;
+        color: white;
+    }
+    .btn-danger:hover {
+        background: #e53e3e;
+    }
+    .btn-sm {
+        padding: 5px 10px;
+        font-size: 12px;
+    }
+    .table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+    .table th {
+        background: #f7fafc;
+        padding: 12px;
+        text-align: left;
+        border-bottom: 2px solid #e2e8f0;
+        font-weight: 600;
+        color: #4a5568;
+    }
+    .table td {
+        padding: 12px;
+        border-bottom: 1px solid #e2e8f0;
+    }
+    .table-striped tbody tr:nth-child(even) {
+        background: #f7fafc;
+    }
+</style>
+
+<div class="wp-temp-container">
+    <div class="section">
+        <div style="margin-bottom: 20px;">
+            <h1 style="font-size: 24px; color: #2d3748; margin-bottom: 10px;">WordPress Temporary Accounts</h1>
+            <span id="health-status" class="status-badge status-ok">System: OK</span>
+        </div>
+
+        <div id="error-message"></div>
+        <div id="loading">Loading...</div>
+
+        <!-- Step 1: Select WordPress Installation -->
+        <div class="wp-card">
+            <h2>1. Select WordPress Installation</h2>
+            <div class="form-group">
+                <label for="wp-site">WordPress Site:</label>
+                <select id="wp-site" class="form-control">
+                    <option value="">Loading WordPress sites...</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <button id="scan-btn" class="btn btn-primary">
+                    <i class="fa fa-refresh"></i> Scan for WordPress
+                </button>
+                <span id="cache-status" style="margin-left: 15px; color: #718096; font-size: 13px;"></span>
+            </div>
+        </div>
+
+        <!-- Step 2: Create Temporary User -->
+        <div class="wp-card" id="create-user-section" style="display:none;">
+            <h2>2. Create Temporary User</h2>
+            <div class="form-group">
+                <label for="username">Username:</label>
+                <input type="text" id="username" class="form-control" placeholder="temp_admin_123">
+            </div>
+            <div class="form-group">
+                <label for="email">Email:</label>
+                <input type="email" id="email" class="form-control" placeholder="temp@example.com">
+            </div>
+            <div class="form-group">
+                <label for="expiration">Expiration:</label>
+                <select id="expiration" class="form-control">
+                    <option value="0.0208">30 Minutes</option>
+                    <option value="0.0417">1 Hour</option>
+                    <option value="0.0833">2 Hours</option>
+                    <option value="0.25">6 Hours</option>
+                    <option value="0.5">12 Hours</option>
+                    <option value="1">1 Day</option>
+                    <option value="7" selected>7 Days</option>
+                    <option value="14">14 Days</option>
+                    <option value="30">30 Days</option>
+                </select>
+            </div>
+            <button id="create-btn" class="btn btn-success">Create Temporary User</button>
+        </div>
+
+        <!-- Step 3: Manage Users -->
+        <div class="wp-card" id="users-section" style="display:none;">
+            <h2>3. Temporary Users</h2>
+            <table class="table table-striped">
+                <thead>
+                    <tr>
+                        <th>Username</th>
+                        <th>Email</th>
+                        <th>Expires</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="users-table">
+                    <tr><td colspan="4">No temporary users found</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script>
+    // State
+    let state = { selectedSite: null };
+
+    // API Communication
+    async function callAPI(action, payload = {}) {
+        showLoading();
+        try {
+            const response = await fetch(window.location.pathname, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action, payload })
+            });
+            const data = await response.json();
+            hideLoading();
+            if (!data.ok) throw new Error(data.error?.message || 'Unknown error');
+            return data.data;
+        } catch (error) {
+            hideLoading();
+            showError(error.message);
+            throw error;
+        }
+    }
+
+    // UI Helpers
+    function showLoading() { document.getElementById('loading').style.display = 'block'; }
+    function hideLoading() { document.getElementById('loading').style.display = 'none'; }
+    function showError(msg) {
+        const el = document.getElementById('error-message');
+        el.textContent = msg;
+        el.style.display = 'block';
+        setTimeout(() => el.style.display = 'none', 5000);
+    }
+
+    // Load cached WordPress sites
+    async function loadCachedWordPress() {
+        try {
+            const sites = await callAPI('load_cached_wordpress', {});
+            if (sites && sites.length > 0) {
+                populateWordPressSites(sites);
+                updateCacheStatus('Loaded from cache (click Scan to refresh)');
+                return true;
+            }
+        } catch (error) {
+            console.log('No cached data available');
+        }
+        return false;
+    }
+
+    // Scan for WordPress (force refresh)
+    async function scanWordPress() {
+        const sites = await callAPI('scan_wordpress', { force_scan: 1 });
+        populateWordPressSites(sites);
+        updateCacheStatus(`Scanned ${sites.length} site(s) - cached for 1 hour`);
+    }
+
+    // Populate WordPress sites dropdown
+    function populateWordPressSites(sites) {
+        const select = document.getElementById('wp-site');
+        select.innerHTML = '<option value="">-- Select a site --</option>';
+
+        if (sites.length === 0) {
+            select.innerHTML = '<option value="">No WordPress installations found</option>';
+            select.disabled = true;
+        } else {
+            sites.forEach(site => {
+                const opt = document.createElement('option');
+                opt.value = site.path;
+                opt.textContent = `${site.domain} (${site.path})`;
+                select.appendChild(opt);
+            });
+            select.disabled = false;
+        }
+    }
+
+    // Update cache status message
+    function updateCacheStatus(message) {
+        const statusEl = document.getElementById('cache-status');
+        if (statusEl) {
+            statusEl.textContent = message;
+        }
+    }
+
+    // Load Users
+    async function loadUsers() {
+        const sitePath = document.getElementById('wp-site').value;
+        if (!sitePath) return;
+
+        state.selectedSite = sitePath;
+        document.getElementById('create-user-section').style.display = 'block';
+        document.getElementById('users-section').style.display = 'block';
+
+        const users = await callAPI('list_temp_users', { site_path: sitePath });
+        const tbody = document.getElementById('users-table');
+
+        if (users.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="4">No temporary users found</td></tr>';
+        } else {
+            tbody.innerHTML = users.map(u => `
+                <tr>
+                    <td>${u.username}</td>
+                    <td>${u.email}</td>
+                    <td>${u.expires}</td>
+                    <td><button class="btn btn-danger btn-sm" onclick="deleteUser('${u.username}')">Delete</button></td>
+                </tr>
+            `).join('');
+        }
+    }
+
+    // Create User
+    async function createUser() {
+        const usernameEl = document.getElementById('username');
+        const emailEl = document.getElementById('email');
+        const expirationEl = document.getElementById('expiration');
+
+        if (!usernameEl || !emailEl || !expirationEl) {
+            showError('Form fields not found');
+            return;
+        }
+
+        const username = usernameEl.value.trim();
+        const email = emailEl.value.trim();
+        const days = parseFloat(expirationEl.value);
+
+        if (!username || !email) {
+            showError('Username and email are required');
+            return;
+        }
+
+        if (username.length < 3 || username.length > 60) {
+            showError('Username must be between 3 and 60 characters');
+            return;
+        }
+
+        if (!/^[A-Za-z0-9._-]+$/.test(username)) {
+            showError('Username can only contain letters, numbers, dots, underscores, and hyphens');
+            return;
+        }
+
+        if (!/^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/.test(email)) {
+            showError('Please enter a valid email address');
+            return;
+        }
+
+        await callAPI('create_temp_user', {
+            site_path: state.selectedSite,
+            username,
+            email,
+            days: days
+        });
+
+        document.getElementById('username').value = '';
+        document.getElementById('email').value = '';
+        loadUsers();
+    }
+
+    // Delete User
+    async function deleteUser(username) {
+        if (!confirm(`Delete user ${username}?`)) return;
+        await callAPI('delete_temp_user', {
+            site_path: state.selectedSite,
+            username
+        });
+        loadUsers();
+    }
+
+    // Event Listeners
+    document.getElementById('scan-btn').addEventListener('click', scanWordPress);
+    document.getElementById('wp-site').addEventListener('change', loadUsers);
+    document.getElementById('create-btn').addEventListener('click', createUser);
+
+    // Initialize
+    loadCachedWordPress();
+    callAPI('health').catch(() => {
+        document.getElementById('health-status').textContent = 'System: Error';
+        document.getElementById('health-status').className = 'status-badge status-error';
+    });
+</script>
+
+[% END %]

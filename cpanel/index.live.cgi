@@ -188,6 +188,26 @@ sub handle_api_request {
 
 sub render_ui {
     my ($cpanel_user) = @_;
+
+    # Use cPanel's Template system for proper integration
+    use Cpanel::Template ();
+
+    print "Content-type: text/html\r\n\r\n";
+
+    Cpanel::Template::process_template(
+        'cpanel',
+        {
+            'template_file' => 'wp_temp_accounts/index.tmpl',
+            'print'         => 1,
+        }
+    );
+
+    return;
+
+    # Old standalone HTML below - keeping for reference
+    print "<!-- OLD HTML DISABLED -->\n";
+    return;
+
     print "Content-type: text/html; charset=utf-8\n\n";
 
     print <<"HTML";

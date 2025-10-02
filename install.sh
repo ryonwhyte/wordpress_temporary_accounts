@@ -58,7 +58,7 @@ log_info "Installing WHM template..."
 mkdir -p /usr/local/cpanel/whostmgr/docroot/templates/wp_temp_accounts
 install -m 644 whm/wp_temp_accounts.tmpl /usr/local/cpanel/whostmgr/docroot/templates/wp_temp_accounts/
 
-# Install cPanel plugin (modern dynamicui method)
+# Install cPanel plugin (Template Toolkit method)
 log_info "Installing cPanel plugin..."
 
 # Create plugin directory
@@ -66,6 +66,11 @@ mkdir -p /usr/local/cpanel/base/frontend/jupiter/wp_temp_accounts
 
 # Install CGI script
 install -m 755 cpanel/index.live.cgi /usr/local/cpanel/base/frontend/jupiter/wp_temp_accounts/
+
+# Install cPanel template
+log_info "Installing cPanel template..."
+mkdir -p /usr/local/cpanel/base/frontend/jupiter/templates/wp_temp_accounts
+install -m 644 cpanel/index.tmpl /usr/local/cpanel/base/frontend/jupiter/templates/wp_temp_accounts/
 
 # Install icons
 install -m 644 cpanel/group_wordpress.svg /usr/local/cpanel/base/frontend/jupiter/wp_temp_accounts/

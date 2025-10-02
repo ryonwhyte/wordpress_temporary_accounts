@@ -306,9 +306,18 @@ WRAPPER 'master_templates/master.tmpl'
 
     // Create User
     async function createUser() {
-        const username = document.getElementById('username').value.trim();
-        const email = document.getElementById('email').value.trim();
-        const days = parseFloat(document.getElementById('expiration').value);
+        const usernameEl = document.getElementById('username');
+        const emailEl = document.getElementById('email');
+        const expirationEl = document.getElementById('expiration');
+
+        if (!usernameEl || !emailEl || !expirationEl) {
+            showError('Form fields not found');
+            return;
+        }
+
+        const username = usernameEl.value.trim();
+        const email = emailEl.value.trim();
+        const days = parseFloat(expirationEl.value);
 
         if (!username || !email) {
             showError('Username and email are required');
