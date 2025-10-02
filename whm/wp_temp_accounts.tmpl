@@ -98,9 +98,6 @@ WRAPPER 'master_templates/master.tmpl'
                         <option value="">[% locale.maketext("Loading accounts...") %]</option>
                     </select>
                 </div>
-                <button id="scan-btn" class="btn btn-primary" disabled>
-                    [% locale.maketext("Scan for WordPress") %]
-                </button>
             </div>
 
             <!-- Step 2: Select WordPress Installation -->
@@ -109,10 +106,16 @@ WRAPPER 'master_templates/master.tmpl'
                 <div class="form-group">
                     <label for="wp-site">[% locale.maketext("WordPress Site:") %]</label>
                     <select id="wp-site" class="form-control">
-                        <option value="">[% locale.maketext("-- Select a WordPress site --") %]</option>
+                        <option value="">[% locale.maketext("Loading WordPress sites...") %]</option>
                     </select>
                 </div>
-                <button id="load-users-btn" class="btn btn-primary" disabled>
+                <div class="form-group">
+                    <button id="scan-btn" class="btn btn-primary">
+                        <i class="fa fa-refresh"></i> [% locale.maketext("Scan for WordPress") %]
+                    </button>
+                    <span id="cache-status" style="margin-left: 15px; color: #718096; font-size: 13px;"></span>
+                </div>
+                <button id="load-users-btn" class="btn btn-success" disabled>
                     [% locale.maketext("Load Users") %]
                 </button>
             </div>
@@ -210,24 +213,59 @@ WRAPPER 'master_templates/master.tmpl'
         }
     }
 
-    // Scan for WordPress
+    // Load cached WordPress sites
+    async function loadCachedWordPress(account) {
+        try {
+            const sites = await callAPI('load_cached_wordpress', { account });
+            if (sites && sites.length > 0) {
+                populateWordPressSites(sites);
+                updateCacheStatus('Loaded from cache (click Scan to refresh)');
+                return true;
+            }
+        } catch (error) {
+            console.log('No cached data available');
+        }
+        return false;
+    }
+
+    // Scan for WordPress (force refresh)
     async function scanWordPress() {
         const account = document.getElementById('cpanel-account').value;
         if (!account) return;
 
         state.selectedAccount = account;
-        const sites = await callAPI('scan_wordpress', { account });
 
+        // Force scan (bypass cache)
+        const sites = await callAPI('scan_wordpress', { account, force_scan: 1 });
+        populateWordPressSites(sites);
+        updateCacheStatus(`Scanned ${sites.length} site(s) - cached for 1 hour`);
+    }
+
+    // Populate WordPress sites dropdown
+    function populateWordPressSites(sites) {
         const select = document.getElementById('wp-site');
         select.innerHTML = '<option value="">-- Select a site --</option>';
-        sites.forEach(site => {
-            const opt = document.createElement('option');
-            opt.value = site.path;
-            opt.textContent = `${site.domain} (${site.path})`;
-            select.appendChild(opt);
-        });
-        select.disabled = false;
-        document.getElementById('wp-installs-section').style.display = 'block';
+
+        if (sites.length === 0) {
+            select.innerHTML = '<option value="">No WordPress installations found</option>';
+            select.disabled = true;
+        } else {
+            sites.forEach(site => {
+                const opt = document.createElement('option');
+                opt.value = site.path;
+                opt.textContent = `${site.domain} (${site.path})`;
+                select.appendChild(opt);
+            });
+            select.disabled = false;
+        }
+    }
+
+    // Update cache status message
+    function updateCacheStatus(message) {
+        const statusEl = document.getElementById('cache-status');
+        if (statusEl) {
+            statusEl.textContent = message;
+        }
     }
 
     // Load Users
@@ -292,8 +330,20 @@ WRAPPER 'master_templates/master.tmpl'
     }
 
     // Event Listeners
-    document.getElementById('cpanel-account').addEventListener('change', function() {
-        document.getElementById('scan-btn').disabled = !this.value;
+    document.getElementById('cpanel-account').addEventListener('change', async function() {
+        const account = this.value;
+        if (account) {
+            state.selectedAccount = account;
+            document.getElementById('wp-installs-section').style.display = 'block';
+
+            // Try to load cached results first
+            const hasCached = await loadCachedWordPress(account);
+            if (!hasCached) {
+                updateCacheStatus('No cached data - click Scan to find WordPress sites');
+            }
+        } else {
+            document.getElementById('wp-installs-section').style.display = 'none';
+        }
     });
     document.getElementById('scan-btn').addEventListener('click', scanWordPress);
     document.getElementById('wp-site').addEventListener('change', function() {

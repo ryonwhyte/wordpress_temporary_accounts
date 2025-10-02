@@ -42,6 +42,7 @@ mkdir -p /usr/local/cpanel/whostmgr/docroot/cgi/wp_temp_accounts
 mkdir -p /usr/local/cpanel/base/frontend/jupiter/wp_temp_accounts
 mkdir -p /usr/local/cpanel/base/frontend/paper_lantern/wp_temp_accounts
 mkdir -p /var/log/wp_temp_accounts
+mkdir -p /var/cache/wp_temp_accounts
 
 # Install WHM plugin
 log_info "Installing WHM plugin..."
@@ -191,6 +192,8 @@ chown -R root:root /usr/local/cpanel/base/frontend/jupiter/wp_temp_accounts
 chown -R root:root /usr/local/cpanel/base/frontend/paper_lantern/wp_temp_accounts 2>/dev/null || true
 chown root:root /var/log/wp_temp_accounts
 chmod 0750 /var/log/wp_temp_accounts
+chown root:root /var/cache/wp_temp_accounts
+chmod 0750 /var/cache/wp_temp_accounts
 
 # Restart services
 log_info "Restarting cpsrvd..."

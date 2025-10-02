@@ -166,8 +166,14 @@ sub handle_api_request {
     }
     elsif ($action eq 'scan_wordpress') {
         my $account = $payload->{account} || '';
-        my $sites = scan_wordpress($account);
+        my $force_scan = $payload->{force_scan} || 0;
+        my $sites = scan_wordpress($account, $force_scan);
         print_json_success($sites);
+    }
+    elsif ($action eq 'load_cached_wordpress') {
+        my $account = $payload->{account} || '';
+        my $cached = load_cached_wordpress_scan($account);
+        print_json_success($cached);
     }
     elsif ($action eq 'create_temp_user') {
         create_temp_user($payload);
@@ -610,44 +616,203 @@ sub list_cpanel_accounts {
     return \@accounts;
 }
 
-sub scan_wordpress {
+###############################################################################
+# WordPress Scan Caching
+###############################################################################
+
+sub get_cache_dir {
+    my $cache_dir = '/var/cache/wp_temp_accounts';
+    unless (-d $cache_dir) {
+        mkdir($cache_dir, 0750) or return undef;
+        chown 0, 0, $cache_dir;
+    }
+    return $cache_dir;
+}
+
+sub get_cache_file {
     my ($account) = @_;
+    return undef unless $account;
+
+    my $cache_dir = get_cache_dir();
+    return undef unless $cache_dir;
+
+    # Sanitize account name for filename
+    $account =~ s/[^a-zA-Z0-9_-]/_/g;
+    return "$cache_dir/wp_scan_${account}.json";
+}
+
+sub save_cached_wordpress_scan {
+    my ($account, $sites) = @_;
+    return unless $account && $sites;
+
+    my $cache_file = get_cache_file($account);
+    return unless $cache_file;
+
+    my $data = {
+        account => $account,
+        timestamp => time(),
+        sites => $sites
+    };
+
+    if (open my $fh, '>', $cache_file) {
+        print $fh Cpanel::JSON::Dump($data);
+        close $fh;
+        chmod 0640, $cache_file;
+
+        write_audit_log('CACHE_WORDPRESS_SCAN', "account=$account sites=" . scalar(@$sites), 'success');
+    }
+}
+
+sub load_cached_wordpress_scan {
+    my ($account) = @_;
+    return undef unless $account;
+
+    my $cache_file = get_cache_file($account);
+    return undef unless $cache_file && -f $cache_file;
+
+    # Check cache age (valid for 1 hour = 3600 seconds)
+    my $max_age = 3600;
+    my $cache_mtime = (stat($cache_file))[9];
+    if (time() - $cache_mtime > $max_age) {
+        # Cache expired
+        unlink $cache_file;
+        return undef;
+    }
+
+    # Load cached data
+    if (open my $fh, '<', $cache_file) {
+        local $/;
+        my $json = <$fh>;
+        close $fh;
+
+        my $data = eval { Cpanel::JSON::Load($json) };
+        if ($data && $data->{sites}) {
+            return $data->{sites};
+        }
+    }
+
+    return undef;
+}
+
+sub scan_wordpress {
+    my ($account, $force_scan) = @_;
     return [] unless $account;
 
+    # Try to load cached results if not forcing a scan
+    unless ($force_scan) {
+        my $cached = load_cached_wordpress_scan($account);
+        if ($cached && @$cached) {
+            return $cached;
+        }
+    }
+
+    # Perform actual scan
     my $homedir = (getpwnam($account))[7];
     return [] unless $homedir && -d $homedir;
 
     my @sites;
-    my @search_paths = (
+    my @search_roots = (
         "$homedir/public_html",
         "$homedir/www",
-        "$homedir/domains/*/public_html"
+        glob("$homedir/domains/*/public_html")
     );
 
-    foreach my $search_path (@search_paths) {
-        my @dirs = glob($search_path);
-        foreach my $dir (@dirs) {
-            next unless -d $dir;
-
-            # Look for wp-config.php
-            my $wp_config = "$dir/wp-config.php";
-            if (-f $wp_config) {
-                # Get domain from directory structure
-                my $domain = $dir;
-                $domain =~ s|.*/public_html||;
-                $domain =~ s|.*/domains/([^/]+)/.*|$1|;
-                $domain ||= 'public_html';
-
-                push @sites, {
-                    path => $dir,
-                    domain => $domain,
-                    wp_config => $wp_config
-                };
-            }
-        }
+    # Recursively search for wp-config.php files
+    foreach my $root (@search_roots) {
+        next unless -d $root;
+        find_wordpress_recursive($root, $homedir, \@sites);
     }
 
+    # Cache the results
+    save_cached_wordpress_scan($account, \@sites);
+
     return \@sites;
+}
+
+sub find_wordpress_recursive {
+    my ($dir, $homedir, $sites_ref) = @_;
+
+    # Security: Don't scan too deep (max 5 levels)
+    my $depth = ($dir =~ tr/\///);
+    my $root_depth = ($homedir =~ tr/\///);
+    return if ($depth - $root_depth) > 5;
+
+    # Check current directory for wp-config.php
+    my $wp_config = "$dir/wp-config.php";
+    if (-f $wp_config) {
+        # Found WordPress installation
+        my $domain = extract_domain_from_path($dir, $homedir);
+
+        # Get site URL from wp-config if possible
+        my $site_url = extract_site_url($wp_config) || $domain;
+
+        push @$sites_ref, {
+            path => $dir,
+            domain => $site_url,
+            wp_config => $wp_config
+        };
+
+        # Don't scan subdirectories if we found WordPress here
+        # (WordPress installations shouldn't be nested)
+        return;
+    }
+
+    # Scan subdirectories
+    opendir(my $dh, $dir) or return;
+    my @subdirs = grep {
+        $_ ne '.' && $_ ne '..' &&
+        -d "$dir/$_" &&
+        $_ !~ /^\./ &&  # Skip hidden directories
+        $_ ne 'wp-admin' &&  # Skip WP directories
+        $_ ne 'wp-content' &&
+        $_ ne 'wp-includes'
+    } readdir($dh);
+    closedir($dh);
+
+    foreach my $subdir (@subdirs) {
+        find_wordpress_recursive("$dir/$subdir", $homedir, $sites_ref);
+    }
+}
+
+sub extract_domain_from_path {
+    my ($path, $homedir) = @_;
+
+    # Remove homedir prefix
+    my $relative = $path;
+    $relative =~ s/^\Q$homedir\E\/?//;
+
+    # Extract domain from common patterns
+    if ($relative =~ m|^domains/([^/]+)|) {
+        return $1;  # domains/example.com/public_html
+    }
+    elsif ($relative =~ m|^public_html/([^/]+)|) {
+        return $1;  # public_html/subfolder
+    }
+    elsif ($relative eq 'public_html' || $relative eq 'www') {
+        return 'Main Site (public_html)';
+    }
+
+    return $relative || 'Unknown';
+}
+
+sub extract_site_url {
+    my ($wp_config) = @_;
+
+    # Try to read WP_SITEURL or WP_HOME from wp-config.php
+    if (open my $fh, '<', $wp_config) {
+        while (my $line = <$fh>) {
+            if ($line =~ /define\s*\(\s*['"](?:WP_SITEURL|WP_HOME)['"]\s*,\s*['"]([^'"]+)['"]/) {
+                close $fh;
+                my $url = $1;
+                $url =~ s|^https?://||;  # Remove protocol
+                $url =~ s|/$||;  # Remove trailing slash
+                return $url;
+            }
+        }
+        close $fh;
+    }
+
+    return undef;
 }
 
 sub create_temp_user {

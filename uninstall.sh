@@ -73,6 +73,10 @@ rm -rf /usr/local/cpanel/base/frontend/paper_lantern/wp_temp_accounts
 log_info "Removing log directory..."
 rm -rf /var/log/wp_temp_accounts
 
+# Remove cache directory
+log_info "Removing cache directory..."
+rm -rf /var/cache/wp_temp_accounts
+
 # Verify removal
 echo ""
 log_info "Verifying removal..."
@@ -106,6 +110,11 @@ fi
 
 if [ -d /var/log/wp_temp_accounts ]; then
     log_error "Log directory still exists"
+    ERRORS=$((ERRORS + 1))
+fi
+
+if [ -d /var/cache/wp_temp_accounts ]; then
+    log_error "Cache directory still exists"
     ERRORS=$((ERRORS + 1))
 fi
 
