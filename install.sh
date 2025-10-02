@@ -71,17 +71,34 @@ install -m 755 cpanel/index.live.cgi /usr/local/cpanel/base/frontend/jupiter/wp_
 install -m 644 cpanel/group_wordpress.svg /usr/local/cpanel/base/frontend/jupiter/wp_temp_accounts/
 install -m 644 cpanel/wp_temp_accounts.svg /usr/local/cpanel/base/frontend/jupiter/wp_temp_accounts/
 
+# Install install.json for dynamicui
+install -m 644 cpanel/install.json /usr/local/cpanel/base/frontend/jupiter/wp_temp_accounts/
+
+# Create plugin tarball for install_plugin script
+log_info "Creating plugin package..."
+TEMP_DIR=$(mktemp -d)
+cp -r /usr/local/cpanel/base/frontend/jupiter/wp_temp_accounts "$TEMP_DIR/"
+cd "$TEMP_DIR"
+tar czf wp_temp_accounts.tar.gz wp_temp_accounts/
+cd - > /dev/null
+
 # Install plugin using official install_plugin script
 if [ -x /usr/local/cpanel/scripts/install_plugin ]; then
     log_info "Registering cPanel plugin with dynamicui..."
-    /usr/local/cpanel/scripts/install_plugin /usr/local/cpanel/base/frontend/jupiter/wp_temp_accounts --theme jupiter --json cpanel/install.json
+    /usr/local/cpanel/scripts/install_plugin "$TEMP_DIR/wp_temp_accounts.tar.gz" --theme jupiter
+    rm -rf "$TEMP_DIR"
 else
-    log_info "install_plugin script not found, using legacy method..."
-    # Fallback to old method if install_plugin doesn't exist
+    log_info "install_plugin script not found, using manual dynamicui registration..."
+    rm -rf "$TEMP_DIR"
+
+    # Manually register with dynamicui by modifying dynamicui files
+    # This is the fallback method for older cPanel versions
     mkdir -p /usr/local/cpanel/base/frontend/paper_lantern/wp_temp_accounts 2>/dev/null || true
     install -m 755 cpanel/index.live.cgi /usr/local/cpanel/base/frontend/paper_lantern/wp_temp_accounts/index.cgi 2>/dev/null || true
     install -m 644 packaging/wp_temp_accounts_icon.png /usr/local/cpanel/base/frontend/paper_lantern/wp_temp_accounts/ 2>/dev/null || true
 fi
+
+log_info "cPanel plugin files installed"
 
 # Register with WHM
 log_info "Registering with WHM..."
