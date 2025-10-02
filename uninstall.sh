@@ -62,6 +62,7 @@ rm -f /var/cpanel/apps/wp_temp_accounts_cpanel.conf
 # Remove WHM files
 log_info "Removing WHM files..."
 rm -rf /usr/local/cpanel/whostmgr/docroot/cgi/wp_temp_accounts
+rm -rf /usr/local/cpanel/whostmgr/docroot/templates/wp_temp_accounts
 
 # Remove cPanel files
 log_info "Removing cPanel files..."

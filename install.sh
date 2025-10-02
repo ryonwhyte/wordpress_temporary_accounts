@@ -48,6 +48,11 @@ log_info "Installing WHM plugin..."
 install -m 755 whm/wp_temp_accounts.cgi /usr/local/cpanel/whostmgr/docroot/cgi/wp_temp_accounts/
 install -m 644 packaging/wp_temp_accounts_icon.png /usr/local/cpanel/whostmgr/docroot/cgi/wp_temp_accounts/
 
+# Install WHM template
+log_info "Installing WHM template..."
+mkdir -p /usr/local/cpanel/whostmgr/docroot/templates/wp_temp_accounts
+install -m 644 whm/wp_temp_accounts.tmpl /usr/local/cpanel/whostmgr/docroot/templates/wp_temp_accounts/
+
 # Install cPanel plugin
 log_info "Installing cPanel plugin..."
 

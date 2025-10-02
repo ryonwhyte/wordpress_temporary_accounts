@@ -1,0 +1,313 @@
+[%
+USE Whostmgr;
+USE JSON;
+
+# Handle right-to-left locales
+IF locale.get_html_dir_attr() == 'rtl';
+    SET rtl_bootstrap = Whostmgr.find_file_url('/3rdparty/bootstrap-rtl/optimized/dist/css/bootstrap-rtl.min.css');
+END;
+
+# Configure stylesheets
+SET styleSheets = [
+    rtl_bootstrap
+];
+
+# Wrap with WHM master template
+WRAPPER 'master_templates/master.tmpl'
+    header = locale.maketext("WordPress Temporary Accounts")
+    stylesheets = styleSheets,
+    theme='bootstrap';
+%]
+
+<style type="text/css">
+    /* WHM-Integrated Plugin Styling */
+    .wp-temp-container { max-width: 100%; }
+    .status-badge {
+        display: inline-block;
+        padding: 6px 12px;
+        border-radius: 3px;
+        font-size: 12px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    .status-ok { background: #48bb78; color: white; }
+    .status-error { background: #f56565; color: white; }
+    .wp-card {
+        background: #f7fafc;
+        padding: 20px;
+        border-radius: 4px;
+        margin-bottom: 20px;
+        border: 1px solid #e2e8f0;
+    }
+    .wp-card h2 {
+        color: #2d3748;
+        font-size: 18px;
+        margin-bottom: 15px;
+        font-weight: 600;
+        padding-bottom: 10px;
+        border-bottom: 1px solid #e2e8f0;
+    }
+    #loading {
+        display: none;
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        background: white;
+        padding: 40px;
+        border-radius: 8px;
+        box-shadow: 0 15px 35px rgba(50, 50, 93, 0.2);
+        z-index: 1000;
+        font-weight: 600;
+        color: #1d8cf8;
+    }
+    #error-message {
+        display: none;
+        background: #fff5f5;
+        color: #c53030;
+        padding: 16px;
+        border-radius: 4px;
+        margin-bottom: 20px;
+        border-left: 4px solid #f56565;
+        font-weight: 500;
+    }
+</style>
+
+<div class="wp-temp-container">
+    <div class="row">
+        <div class="col-xs-12">
+            <div class="section-heading">
+                <h2>[% locale.maketext("WordPress Temporary Accounts") %]</h2>
+                <span id="health-status" class="status-badge status-ok">System: OK</span>
+            </div>
+        </div>
+    </div>
+
+    <div id="error-message"></div>
+    <div id="loading">Loading...</div>
+
+    <div class="row">
+        <div class="col-xs-12">
+            <!-- Step 1: Select cPanel Account -->
+            <div class="wp-card">
+                <h2>1. [% locale.maketext("Select cPanel Account") %]</h2>
+                <div class="form-group">
+                    <label for="cpanel-account">[% locale.maketext("cPanel Account:") %]</label>
+                    <select id="cpanel-account" class="form-control">
+                        <option value="">[% locale.maketext("Loading accounts...") %]</option>
+                    </select>
+                </div>
+                <button id="scan-btn" class="btn btn-primary" disabled>
+                    [% locale.maketext("Scan for WordPress") %]
+                </button>
+            </div>
+
+            <!-- Step 2: Select WordPress Installation -->
+            <div class="wp-card" id="wp-installs-section" style="display:none;">
+                <h2>2. [% locale.maketext("Select WordPress Installation") %]</h2>
+                <div class="form-group">
+                    <label for="wp-site">[% locale.maketext("WordPress Site:") %]</label>
+                    <select id="wp-site" class="form-control">
+                        <option value="">[% locale.maketext("-- Select a WordPress site --") %]</option>
+                    </select>
+                </div>
+                <button id="load-users-btn" class="btn btn-primary" disabled>
+                    [% locale.maketext("Load Users") %]
+                </button>
+            </div>
+
+            <!-- Step 3: Create Temporary User -->
+            <div class="wp-card" id="create-user-section" style="display:none;">
+                <h2>3. [% locale.maketext("Create Temporary User") %]</h2>
+                <div class="form-group">
+                    <label for="username">[% locale.maketext("Username:") %]</label>
+                    <input type="text" id="username" class="form-control" placeholder="temp_admin_123">
+                </div>
+                <div class="form-group">
+                    <label for="email">[% locale.maketext("Email:") %]</label>
+                    <input type="email" id="email" class="form-control" placeholder="temp@example.com">
+                </div>
+                <div class="form-group">
+                    <label for="days">[% locale.maketext("Expiration (days):") %]</label>
+                    <input type="number" id="days" class="form-control" value="7" min="1" max="365">
+                </div>
+                <button id="create-btn" class="btn btn-success">
+                    [% locale.maketext("Create Temporary User") %]
+                </button>
+            </div>
+
+            <!-- Step 4: Manage Users -->
+            <div class="wp-card" id="users-section" style="display:none;">
+                <h2>4. [% locale.maketext("Temporary Users") %]</h2>
+                <table class="table table-striped">
+                    <thead>
+                        <tr>
+                            <th>[% locale.maketext("Username") %]</th>
+                            <th>[% locale.maketext("Email") %]</th>
+                            <th>[% locale.maketext("Expires") %]</th>
+                            <th>[% locale.maketext("Actions") %]</th>
+                        </tr>
+                    </thead>
+                    <tbody id="users-table">
+                        <tr><td colspan="4">[% locale.maketext("No temporary users found") %]</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // State
+    let state = { selectedAccount: null, selectedSite: null };
+
+    // API Communication
+    async function callAPI(action, payload = {}) {
+        showLoading();
+        try {
+            const response = await fetch(window.location.pathname, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action, payload })
+            });
+            const data = await response.json();
+            hideLoading();
+            if (!data.ok) throw new Error(data.error?.message || 'Unknown error');
+            return data.data;
+        } catch (error) {
+            hideLoading();
+            showError(error.message);
+            throw error;
+        }
+    }
+
+    // UI Helpers
+    function showLoading() { document.getElementById('loading').style.display = 'block'; }
+    function hideLoading() { document.getElementById('loading').style.display = 'none'; }
+    function showError(msg) {
+        const el = document.getElementById('error-message');
+        el.textContent = msg;
+        el.style.display = 'block';
+        setTimeout(() => el.style.display = 'none', 5000);
+    }
+
+    // Load cPanel Accounts
+    async function loadAccounts() {
+        try {
+            const accounts = await callAPI('list_cpanel_accounts');
+            const select = document.getElementById('cpanel-account');
+            select.innerHTML = '<option value="">-- Select an account --</option>';
+            accounts.forEach(acc => {
+                const opt = document.createElement('option');
+                opt.value = acc.user;
+                opt.textContent = `${acc.user} (${acc.domain})`;
+                select.appendChild(opt);
+            });
+            select.disabled = false;
+        } catch (error) {
+            console.error('Failed to load accounts:', error);
+        }
+    }
+
+    // Scan for WordPress
+    async function scanWordPress() {
+        const account = document.getElementById('cpanel-account').value;
+        if (!account) return;
+
+        state.selectedAccount = account;
+        const sites = await callAPI('scan_wordpress', { account });
+
+        const select = document.getElementById('wp-site');
+        select.innerHTML = '<option value="">-- Select a site --</option>';
+        sites.forEach(site => {
+            const opt = document.createElement('option');
+            opt.value = site.path;
+            opt.textContent = `${site.domain} (${site.path})`;
+            select.appendChild(opt);
+        });
+        select.disabled = false;
+        document.getElementById('wp-installs-section').style.display = 'block';
+    }
+
+    // Load Users
+    async function loadUsers() {
+        const sitePath = document.getElementById('wp-site').value;
+        if (!sitePath) return;
+
+        state.selectedSite = sitePath;
+        document.getElementById('create-user-section').style.display = 'block';
+        document.getElementById('users-section').style.display = 'block';
+
+        const users = await callAPI('list_temp_users', { site_path: sitePath });
+        const tbody = document.getElementById('users-table');
+
+        if (users.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="4">No temporary users found</td></tr>';
+        } else {
+            tbody.innerHTML = users.map(u => `
+                <tr>
+                    <td>${u.username}</td>
+                    <td>${u.email}</td>
+                    <td>${u.expires}</td>
+                    <td><button class="btn btn-danger btn-sm" onclick="deleteUser('${u.username}')">Delete</button></td>
+                </tr>
+            `).join('');
+        }
+    }
+
+    // Create User
+    async function createUser() {
+        const username = document.getElementById('username').value;
+        const email = document.getElementById('email').value;
+        const days = document.getElementById('days').value;
+
+        if (!username || !email) {
+            showError('Username and email are required');
+            return;
+        }
+
+        await callAPI('create_temp_user', {
+            cpanel_user: state.selectedAccount,
+            site_path: state.selectedSite,
+            username,
+            email,
+            days: parseInt(days)
+        });
+
+        document.getElementById('username').value = '';
+        document.getElementById('email').value = '';
+        loadUsers();
+    }
+
+    // Delete User
+    async function deleteUser(username) {
+        if (!confirm(`Delete user ${username}?`)) return;
+        await callAPI('delete_temp_user', {
+            cpanel_user: state.selectedAccount,
+            site_path: state.selectedSite,
+            username
+        });
+        loadUsers();
+    }
+
+    // Event Listeners
+    document.getElementById('cpanel-account').addEventListener('change', function() {
+        document.getElementById('scan-btn').disabled = !this.value;
+    });
+    document.getElementById('scan-btn').addEventListener('click', scanWordPress);
+    document.getElementById('wp-site').addEventListener('change', function() {
+        document.getElementById('load-users-btn').disabled = !this.value;
+    });
+    document.getElementById('load-users-btn').addEventListener('click', loadUsers);
+    document.getElementById('create-btn').addEventListener('click', createUser);
+
+    // Initialize
+    loadAccounts();
+    callAPI('health').catch(() => {
+        document.getElementById('health-status').textContent = 'System: Error';
+        document.getElementById('health-status').className = 'status-badge status-error';
+    });
+</script>
+
+[% END %]

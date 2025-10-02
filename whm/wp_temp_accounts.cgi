@@ -189,17 +189,24 @@ sub handle_api_request {
 ###############################################################################
 
 sub render_ui {
-    # Use WHM's template system for proper integration
-    use Whostmgr::HTMLInterface();
+    # Use Template Toolkit for proper WHM integration
+    use Cpanel::Template ();
 
-    Whostmgr::HTMLInterface::defheader(
-        'WordPress Temporary Accounts',
-        '',
-        ''
+    print "Content-type: text/html\r\n\r\n";
+
+    Cpanel::Template::process_template(
+        'whostmgr',
+        {
+            'template_file' => 'wp_temp_accounts/wp_temp_accounts.tmpl',
+            'print'         => 1,
+        }
     );
 
-    print <<'HTML';
-    <style>
+    return;
+
+    # Old heredoc code below - keeping for reference
+    print <<'HTML_DISABLED';
+<style type="text/css">
         /* WHM-Integrated Plugin Styling */
         .container { max-width: 100%; }
         .whm-section-header {
@@ -344,64 +351,64 @@ sub render_ui {
         }
         tr:hover { background: #f8f9fb; }
         tr:last-child td { border-bottom: none; }
-    </style>
+</style>
 
-    <div class="container">
-        <div class="whm-section-header">
-            <h2>WordPress Temporary Accounts</h2>
-            <div id="health-status" class="status ok">System: OK</div>
-        </div>
+<div class="container">
+    <div class="whm-section-header">
+        <h2>WordPress Temporary Accounts</h2>
+        <div id="health-status" class="status ok">System: OK</div>
+    </div>
 
-        <div id="error-message"></div>
-        <div id="loading">Loading...</div>
+    <div id="error-message"></div>
+    <div id="loading">Loading...</div>
 
-        <div class="whm-main-content">
-            <!-- Step 1: Select cPanel Account -->
-            <section class="card">
-                <h2>1. Select cPanel Account</h2>
-                <div class="form-group">
+    <div class="whm-main-content">
+        <!-- Step 1: Select cPanel Account -->
+        <section class="card">
+            <h2>1. Select cPanel Account</h2>
+            <div class="form-group">
                     <label for="cpanel-account">cPanel Account:</label>
                     <select id="cpanel-account">
                         <option value="">Loading accounts...</option>
                     </select>
                 </div>
-                <button id="scan-btn" disabled>Scan for WordPress</button>
-            </section>
+            <button id="scan-btn" disabled>Scan for WordPress</button>
+        </section>
 
-            <!-- Step 2: Select WordPress Installation -->
-            <section class="card" id="wp-installs-section" style="display:none;">
-                <h2>2. Select WordPress Installation</h2>
-                <div class="form-group">
+        <!-- Step 2: Select WordPress Installation -->
+        <section class="card" id="wp-installs-section" style="display:none;">
+            <h2>2. Select WordPress Installation</h2>
+            <div class="form-group">
                     <label for="wp-site">WordPress Site:</label>
                     <select id="wp-site">
                         <option value="">-- Select a WordPress site --</option>
                     </select>
                 </div>
-                <button id="load-users-btn" disabled>Load Users</button>
-            </section>
+            <button id="load-users-btn" disabled>Load Users</button>
+        </section>
 
-            <!-- Step 3: Create Temporary User -->
-            <section class="card" id="create-user-section" style="display:none;">
-                <h2>3. Create Temporary User</h2>
-                <div class="form-group">
+        <!-- Step 3: Create Temporary User -->
+        <section class="card" id="create-user-section" style="display:none;">
+            <h2>3. Create Temporary User</h2>
+            <div class="form-group">
                     <label for="username">Username:</label>
                     <input type="text" id="username" placeholder="temp_admin_123">
                 </div>
-                <div class="form-group">
+            <div class="form-group">
                     <label for="email">Email:</label>
                     <input type="email" id="email" placeholder="temp@example.com">
                 </div>
-                <div class="form-group">
+            <div class="form-group">
                     <label for="days">Expiration (days):</label>
                     <input type="number" id="days" value="7" min="1" max="365">
                 </div>
-                <button id="create-btn">Create Temporary User</button>
-            </section>
+            <button id="create-btn">Create Temporary User</button>
+        </section>
 
-            <!-- Step 4: Manage Users -->
-            <section class="card" id="users-section" style="display:none;">
-                <h2>4. Temporary Users</h2>
-                <table>
+        <!-- Step 4: Manage Users -->
+        <section class="card" id="users-section" style="display:none;">
+            <h2>4. Temporary Users</h2>
+            <table>
                     <thead>
                         <tr>
                             <th>Username</th>
@@ -414,7 +421,7 @@ sub render_ui {
                         <tr><td colspan="4">No temporary users found</td></tr>
                     </tbody>
                 </table>
-            </section>
+        </section>
         </div><!-- whm-main-content -->
     </div><!-- container -->
 
@@ -569,9 +576,8 @@ sub render_ui {
             document.getElementById('health-status').className = 'status error';
         });
     </script>
-HTML
-
-    Whostmgr::HTMLInterface::deffooter();
+HTML_DISABLED
+    # End of old heredoc code
 }
 
 ###############################################################################
