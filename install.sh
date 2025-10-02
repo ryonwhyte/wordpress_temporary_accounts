@@ -179,8 +179,10 @@ log_info "cPanel plugin installation complete"
 # Set proper ownership and permissions
 log_info "Setting file permissions..."
 chown -R root:root /usr/local/cpanel/whostmgr/docroot/cgi/wp_temp_accounts
+chown -R root:root /usr/local/cpanel/whostmgr/docroot/templates/wp_temp_accounts
 chown root:root /usr/local/cpanel/whostmgr/docroot/addon_plugins/wp_temp_accounts_icon.png
 chown -R root:root /usr/local/cpanel/base/frontend/jupiter/wp_temp_accounts
+chown -R root:root /usr/local/cpanel/base/frontend/jupiter/templates/wp_temp_accounts
 chown -R root:root /usr/local/cpanel/base/frontend/paper_lantern/wp_temp_accounts 2>/dev/null || true
 chown root:root /var/log/wp_temp_accounts
 chmod 0750 /var/log/wp_temp_accounts

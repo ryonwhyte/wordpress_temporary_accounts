@@ -194,11 +194,14 @@ sub render_ui {
 
     print "Content-type: text/html\r\n\r\n";
 
+    # Template is in: /usr/local/cpanel/base/frontend/jupiter/templates/wp_temp_accounts/index.tmpl
+    # cPanel looks in templates/ subdirectory of the theme
     Cpanel::Template::process_template(
         'cpanel',
         {
             'template_file' => 'wp_temp_accounts/index.tmpl',
             'print'         => 1,
+            'theme'         => 'jupiter',
         }
     );
 
