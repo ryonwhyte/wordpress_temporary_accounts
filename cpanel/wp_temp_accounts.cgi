@@ -38,17 +38,95 @@ sub run {
 }
 
 ###############################################################################
+# Logging and Audit Trail
+###############################################################################
+
+sub write_audit_log {
+    my ($cpanel_user, $action, $details, $result) = @_;
+
+    my $log_dir = '/var/log/wp_temp_accounts';
+    my $log_file = "$log_dir/cpanel.log";
+
+    # Ensure log directory exists
+    unless (-d $log_dir) {
+        mkdir($log_dir, 0750) or return;
+        chown 0, 0, $log_dir;
+    }
+
+    # Sanitize inputs for logging
+    $cpanel_user = sanitize_log_input($cpanel_user);
+    $action = sanitize_log_input($action);
+    $details = sanitize_log_input($details);
+    $result = sanitize_log_input($result);
+
+    # Format: timestamp | user | action | details | result | remote_ip
+    my $timestamp = scalar localtime(time());
+    my $remote_ip = $ENV{REMOTE_ADDR} || 'unknown';
+    my $log_entry = sprintf("[%s] %s | %s | %s | %s | %s\n",
+        $timestamp, $cpanel_user, $action, $details, $result, $remote_ip);
+
+    # Write to log file
+    if (open my $fh, '>>', $log_file) {
+        print $fh $log_entry;
+        close $fh;
+        chmod 0640, $log_file;
+    }
+}
+
+###############################################################################
+# Input Validation
+###############################################################################
+
+sub validate_username {
+    my ($username) = @_;
+    return 0 unless defined $username;
+    return 0 if length($username) < 3 || length($username) > 60;
+    return $username =~ /^[A-Za-z0-9._-]+$/;
+}
+
+sub validate_email {
+    my ($email) = @_;
+    return 0 unless defined $email;
+    return 0 if length($email) < 5 || length($email) > 254;
+    return $email =~ /^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/;
+}
+
+sub validate_days {
+    my ($days) = @_;
+    return 0 unless defined $days && $days =~ /^\d+$/;
+    return $days >= 1 && $days <= 365;  # 1 day to 1 year max
+}
+
+sub validate_site_path {
+    my ($path, $cpanel_user) = @_;
+    return 0 unless defined $path && defined $cpanel_user;
+    return 0 if $path =~ /\.\./;  # Prevent directory traversal
+    return 0 unless -d $path;
+
+    my $homedir = (getpwnam($cpanel_user))[7];
+    return 0 unless $homedir;
+    return $path =~ /^\Q$homedir\E\//;
+}
+
+sub sanitize_log_input {
+    my ($input) = @_;
+    return '' unless defined $input;
+    $input =~ s/[^\x20-\x7E]//g;  # Remove non-printable chars
+    return substr($input, 0, 200);  # Limit length
+}
+
+###############################################################################
 # API Request Handler
 ###############################################################################
 
 sub handle_api_request {
     my ($cgi, $cpanel_user) = @_;
 
-    # Read request body
+    # Read request body with size limit
     my $body = '';
     while (read STDIN, my $chunk, 8192) {
         $body .= $chunk;
-        last if length($body) >= 65536;
+        last if length($body) >= 65536;  # 64KB limit for DoS protection
     }
 
     my $request = eval { Cpanel::JSON::Load($body) };
@@ -99,33 +177,183 @@ sub render_ui {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>WordPress Temporary Accounts</title>
     <style>
+        /* cPanel Jupiter Theme Compatible Styling */
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f5f5f5; padding: 20px; }
-        .container { max-width: 1200px; margin: 0 auto; }
-        header { background: white; padding: 20px; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-        h1 { color: #333; font-size: 24px; margin-bottom: 10px; }
-        .user-info { color: #666; font-size: 14px; }
-        .status { display: inline-block; padding: 5px 10px; border-radius: 4px; font-size: 14px; margin-top: 5px; }
-        .status.ok { background: #d4edda; color: #155724; }
-        .status.error { background: #f8d7da; color: #721c24; }
-        .card { background: white; padding: 20px; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-        h2 { color: #333; font-size: 18px; margin-bottom: 15px; }
-        .form-group { margin-bottom: 15px; }
-        label { display: block; margin-bottom: 5px; color: #555; font-weight: 500; }
-        select, input { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; }
-        button { background: #007bff; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; font-size: 14px; }
-        button:hover { background: #0056b3; }
-        button:disabled { background: #ccc; cursor: not-allowed; }
-        .btn-danger { background: #dc3545; }
-        .btn-danger:hover { background: #c82333; }
-        #loading { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 30px; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.2); z-index: 1000; }
-        #error-message { display: none; background: #f8d7da; color: #721c24; padding: 15px; border-radius: 4px; margin-bottom: 20px; border: 1px solid #f5c6cb; }
-        #success-message { display: none; background: #d4edda; color: #155724; padding: 15px; border-radius: 4px; margin-bottom: 20px; border: 1px solid #c3e6cb; }
-        table { width: 100%; border-collapse: collapse; }
-        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }
-        th { background: #f8f9fa; font-weight: 600; color: #333; }
-        tr:hover { background: #f8f9fa; }
-        .password-display { background: #f8f9fa; padding: 10px; border-radius: 4px; font-family: monospace; margin-top: 10px; }
+        body {
+            font-family: 'Open Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: #f7f9fc;
+            padding: 20px;
+            font-size: 13px;
+            color: #3c4858;
+        }
+        .container { max-width: 1400px; margin: 0 auto; }
+        header {
+            background: linear-gradient(135deg, #1d8cf8 0%, #3358f4 100%);
+            padding: 25px 30px;
+            border-radius: 6px;
+            margin-bottom: 25px;
+            box-shadow: 0 4px 20px 0px rgba(0, 0, 0, 0.14), 0 7px 10px -5px rgba(29, 140, 248, 0.4);
+        }
+        h1 {
+            color: white;
+            font-size: 22px;
+            margin-bottom: 5px;
+            font-weight: 400;
+            letter-spacing: 0.3px;
+        }
+        .user-info {
+            color: rgba(255,255,255,0.9);
+            font-size: 13px;
+            margin-bottom: 5px;
+        }
+        .status {
+            display: inline-block;
+            padding: 6px 12px;
+            border-radius: 3px;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .status.ok { background: rgba(255,255,255,0.2); color: white; }
+        .status.error { background: rgba(255, 61, 61, 0.9); color: white; }
+        .card {
+            background: white;
+            padding: 25px;
+            border-radius: 6px;
+            margin-bottom: 25px;
+            box-shadow: 0 1px 4px 0 rgba(0, 0, 0, 0.14);
+            border: 1px solid #e3e3e3;
+        }
+        h2 {
+            color: #2c3e50;
+            font-size: 16px;
+            margin-bottom: 20px;
+            font-weight: 600;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #1d8cf8;
+        }
+        .form-group { margin-bottom: 20px; }
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #525f7f;
+            font-weight: 600;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        select, input {
+            width: 100%;
+            padding: 11px 16px;
+            border: 1px solid #cad1d7;
+            border-radius: 4px;
+            font-size: 13px;
+            color: #3c4858;
+            transition: all 0.15s ease;
+            background: white;
+        }
+        select:focus, input:focus {
+            outline: none;
+            border-color: #1d8cf8;
+            box-shadow: 0 0 0 3px rgba(29, 140, 248, 0.1);
+        }
+        button {
+            background: linear-gradient(60deg, #1d8cf8, #3358f4);
+            color: white;
+            border: none;
+            padding: 11px 24px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            box-shadow: 0 4px 6px rgba(50, 50, 93, 0.11), 0 1px 3px rgba(0, 0, 0, 0.08);
+            transition: all 0.15s ease;
+        }
+        button:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 7px 14px rgba(50, 50, 93, 0.1), 0 3px 6px rgba(0, 0, 0, 0.08);
+        }
+        button:disabled {
+            background: #95a5a6;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+        .btn-danger {
+            background: linear-gradient(60deg, #f5365c, #f56036);
+            box-shadow: 0 4px 6px rgba(245, 54, 92, 0.3), 0 1px 3px rgba(0, 0, 0, 0.08);
+        }
+        .btn-danger:hover {
+            box-shadow: 0 7px 14px rgba(245, 54, 92, 0.25), 0 3px 6px rgba(0, 0, 0, 0.08);
+        }
+        #loading {
+            display: none;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: white;
+            padding: 40px;
+            border-radius: 8px;
+            box-shadow: 0 15px 35px rgba(50, 50, 93, 0.2), 0 5px 15px rgba(0, 0, 0, 0.17);
+            z-index: 1000;
+            font-weight: 600;
+            color: #1d8cf8;
+        }
+        #error-message {
+            display: none;
+            background: #fff5f5;
+            color: #c53030;
+            padding: 16px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+            border-left: 4px solid #f56565;
+            font-weight: 500;
+        }
+        #success-message {
+            display: none;
+            background: #f0fdf4;
+            color: #166534;
+            padding: 16px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+            border-left: 4px solid #22c55e;
+            font-weight: 500;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background: white;
+        }
+        th, td {
+            padding: 14px 16px;
+            text-align: left;
+            border-bottom: 1px solid #e3e3e3;
+        }
+        th {
+            background: #f7f9fc;
+            font-weight: 600;
+            color: #525f7f;
+            text-transform: uppercase;
+            font-size: 11px;
+            letter-spacing: 0.5px;
+        }
+        tr:hover { background: #f8f9fb; }
+        tr:last-child td { border-bottom: none; }
+        .password-display {
+            background: #f7f9fc;
+            padding: 12px 16px;
+            border-radius: 4px;
+            font-family: 'Monaco', 'Courier New', monospace;
+            margin-top: 12px;
+            border: 1px solid #e3e3e3;
+            font-size: 14px;
+            color: #1d8cf8;
+            font-weight: 600;
+        }
     </style>
 </head>
 <body>
@@ -400,15 +628,32 @@ sub create_temp_user {
     my $email = $payload->{email} || '';
     my $days = $payload->{days} || 7;
 
-    # Validate
+    # Validate presence
     unless ($site_path && $username && $email) {
         print_json_error('missing_params', 'Missing required parameters');
         return;
     }
 
+    # Validate username format
+    unless (validate_username($username)) {
+        print_json_error('invalid_username', 'Username must be 3-60 characters, alphanumeric with ._- only');
+        return;
+    }
+
+    # Validate email format
+    unless (validate_email($email)) {
+        print_json_error('invalid_email', 'Invalid email address format');
+        return;
+    }
+
+    # Validate days
+    unless (validate_days($days)) {
+        print_json_error('invalid_days', 'Days must be between 1 and 365');
+        return;
+    }
+
     # Validate site_path is under the user's homedir
-    my $homedir = (getpwnam($cpanel_user))[7];
-    unless ($site_path =~ /^\Q$homedir\E\//) {
+    unless (validate_site_path($site_path, $cpanel_user)) {
         print_json_error('invalid_path', 'Invalid site path - must be under your home directory');
         return;
     }
@@ -422,6 +667,7 @@ sub create_temp_user {
     my $output = `$cmd`;
 
     if ($? != 0) {
+        write_audit_log($cpanel_user, 'CREATE_USER_FAILED', "user=$username site=$site_path", "error: $output");
         print_json_error('wp_cli_error', "Failed to create user: $output");
         return;
     }
@@ -429,6 +675,9 @@ sub create_temp_user {
     # Add expiration meta
     `sudo -u $cpanel_user wp user meta update "$username" wp_temp_user 1 --path="$site_path"`;
     `sudo -u $cpanel_user wp user meta update "$username" wp_temp_expires $expires --path="$site_path"`;
+
+    # Log successful creation
+    write_audit_log($cpanel_user, 'CREATE_USER_SUCCESS', "user=$username site=$site_path days=$days", "success");
 
     print_json_success({
         username => $username,
@@ -496,9 +745,13 @@ sub delete_temp_user {
     my $output = `$cmd`;
 
     if ($? != 0) {
+        write_audit_log($cpanel_user, 'DELETE_USER_FAILED', "user=$username site=$site_path", "error: $output");
         print_json_error('wp_cli_error', "Failed to delete user: $output");
         return;
     }
+
+    # Log successful deletion
+    write_audit_log($cpanel_user, 'DELETE_USER_SUCCESS', "user=$username site=$site_path", "success");
 
     print_json_success({ deleted => $username });
 }

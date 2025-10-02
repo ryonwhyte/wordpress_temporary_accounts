@@ -39,7 +39,9 @@ echo ""
 # Create directories
 log_info "Creating directories..."
 mkdir -p /usr/local/cpanel/whostmgr/docroot/cgi/wp_temp_accounts
+mkdir -p /usr/local/cpanel/base/frontend/jupiter/wp_temp_accounts
 mkdir -p /usr/local/cpanel/base/frontend/paper_lantern/wp_temp_accounts
+mkdir -p /var/log/wp_temp_accounts
 
 # Install WHM plugin
 log_info "Installing WHM plugin..."
@@ -48,8 +50,14 @@ install -m 644 packaging/wp_temp_accounts_icon.png /usr/local/cpanel/whostmgr/do
 
 # Install cPanel plugin
 log_info "Installing cPanel plugin..."
-install -m 755 cpanel/wp_temp_accounts.cgi /usr/local/cpanel/base/frontend/paper_lantern/wp_temp_accounts/index.cgi
-install -m 644 packaging/wp_temp_accounts_icon.png /usr/local/cpanel/base/frontend/paper_lantern/wp_temp_accounts/
+
+# Jupiter (primary theme)
+install -m 755 cpanel/wp_temp_accounts.cgi /usr/local/cpanel/base/frontend/jupiter/wp_temp_accounts/index.cgi
+install -m 644 packaging/wp_temp_accounts_icon.png /usr/local/cpanel/base/frontend/jupiter/wp_temp_accounts/
+
+# Paper Lantern (legacy fallback)
+install -m 755 cpanel/wp_temp_accounts.cgi /usr/local/cpanel/base/frontend/paper_lantern/wp_temp_accounts/index.cgi 2>/dev/null || true
+install -m 644 packaging/wp_temp_accounts_icon.png /usr/local/cpanel/base/frontend/paper_lantern/wp_temp_accounts/ 2>/dev/null || true
 
 # Register with WHM
 log_info "Registering with WHM..."
@@ -130,7 +138,7 @@ TEMP_CPANEL_CONF=$(mktemp) || {
 cat > "$TEMP_CPANEL_CONF" <<'EOF'
 name=wp_temp_accounts_cpanel
 service=cpanel
-url=/frontend/paper_lantern/wp_temp_accounts/index.cgi
+url=/frontend/jupiter/wp_temp_accounts/index.cgi
 displayname=WordPress Temporary Accounts
 entryurl=wp_temp_accounts/index.cgi
 target=_self
@@ -170,6 +178,14 @@ fi
 }
 
 log_info "cPanel plugin registered successfully"
+
+# Set proper ownership and permissions
+log_info "Setting file permissions..."
+chown -R root:root /usr/local/cpanel/whostmgr/docroot/cgi/wp_temp_accounts
+chown -R root:root /usr/local/cpanel/base/frontend/jupiter/wp_temp_accounts
+chown -R root:root /usr/local/cpanel/base/frontend/paper_lantern/wp_temp_accounts 2>/dev/null || true
+chown root:root /var/log/wp_temp_accounts
+chmod 0750 /var/log/wp_temp_accounts
 
 # Restart services
 log_info "Restarting cpsrvd..."

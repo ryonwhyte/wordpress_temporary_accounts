@@ -65,7 +65,12 @@ rm -rf /usr/local/cpanel/whostmgr/docroot/cgi/wp_temp_accounts
 
 # Remove cPanel files
 log_info "Removing cPanel files..."
+rm -rf /usr/local/cpanel/base/frontend/jupiter/wp_temp_accounts
 rm -rf /usr/local/cpanel/base/frontend/paper_lantern/wp_temp_accounts
+
+# Remove log directory
+log_info "Removing log directory..."
+rm -rf /var/log/wp_temp_accounts
 
 # Verify removal
 echo ""
@@ -88,8 +93,18 @@ if [ -d /usr/local/cpanel/whostmgr/docroot/cgi/wp_temp_accounts ]; then
     ERRORS=$((ERRORS + 1))
 fi
 
+if [ -d /usr/local/cpanel/base/frontend/jupiter/wp_temp_accounts ]; then
+    log_error "cPanel Jupiter directory still exists"
+    ERRORS=$((ERRORS + 1))
+fi
+
 if [ -d /usr/local/cpanel/base/frontend/paper_lantern/wp_temp_accounts ]; then
-    log_error "cPanel directory still exists"
+    log_error "cPanel Paper Lantern directory still exists"
+    ERRORS=$((ERRORS + 1))
+fi
+
+if [ -d /var/log/wp_temp_accounts ]; then
+    log_error "Log directory still exists"
     ERRORS=$((ERRORS + 1))
 fi
 
