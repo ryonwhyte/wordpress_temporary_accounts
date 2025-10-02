@@ -69,8 +69,9 @@ install -m 755 cpanel/index.live.cgi /usr/local/cpanel/base/frontend/jupiter/wp_
 
 # Install cPanel template
 log_info "Installing cPanel template..."
-mkdir -p /usr/local/cpanel/base/frontend/jupiter/templates/wp_temp_accounts
-install -m 644 cpanel/index.tmpl /usr/local/cpanel/base/frontend/jupiter/templates/wp_temp_accounts/
+# cPanel looks for templates in the theme's root directory, not in a templates/ subdirectory
+mkdir -p /usr/local/cpanel/base/frontend/jupiter/wp_temp_accounts
+install -m 644 cpanel/index.tmpl /usr/local/cpanel/base/frontend/jupiter/wp_temp_accounts/
 
 # Install icons
 install -m 644 cpanel/group_wordpress.svg /usr/local/cpanel/base/frontend/jupiter/wp_temp_accounts/
@@ -182,16 +183,22 @@ chown -R root:root /usr/local/cpanel/whostmgr/docroot/cgi/wp_temp_accounts
 chown -R root:root /usr/local/cpanel/whostmgr/docroot/templates/wp_temp_accounts
 chown root:root /usr/local/cpanel/whostmgr/docroot/addon_plugins/wp_temp_accounts_icon.png
 chown -R root:root /usr/local/cpanel/base/frontend/jupiter/wp_temp_accounts
-chown -R root:root /usr/local/cpanel/base/frontend/jupiter/templates/wp_temp_accounts
 chown -R root:root /usr/local/cpanel/base/frontend/paper_lantern/wp_temp_accounts 2>/dev/null || true
 chown root:root /var/log/wp_temp_accounts
 chmod 0750 /var/log/wp_temp_accounts
 chown root:root /var/cache/wp_temp_accounts
 chmod 0750 /var/cache/wp_temp_accounts
 
-# Restart services
+# Clear caches and restart services
+log_info "Clearing template cache..."
+rm -f /usr/local/cpanel/base/frontend/jupiter/.cpanelcache/* 2>/dev/null || true
+rm -f /usr/local/cpanel/whostmgr/.cpanelcache/* 2>/dev/null || true
+
 log_info "Restarting cpsrvd..."
 /scripts/restartsrv_cpsrvd --hard
+
+log_info "Rebuilding WHM session cache..."
+/usr/local/cpanel/bin/rebuild_sprites 2>/dev/null || true
 
 echo ""
 echo "======================================"
