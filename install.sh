@@ -47,7 +47,11 @@ mkdir -p /var/cache/wp_temp_accounts
 # Install WHM plugin
 log_info "Installing WHM plugin..."
 install -m 755 whm/wp_temp_accounts.cgi /usr/local/cpanel/whostmgr/docroot/cgi/wp_temp_accounts/
-install -m 644 packaging/wp_temp_accounts_icon.png /usr/local/cpanel/whostmgr/docroot/cgi/wp_temp_accounts/
+
+# Install WHM icon to addon_plugins directory
+log_info "Installing WHM icon..."
+mkdir -p /usr/local/cpanel/whostmgr/docroot/addon_plugins
+install -m 644 packaging/wp_temp_accounts_icon.png /usr/local/cpanel/whostmgr/docroot/addon_plugins/
 
 # Install WHM template
 log_info "Installing WHM template..."
@@ -188,6 +192,7 @@ log_info "cPanel plugin registered successfully"
 # Set proper ownership and permissions
 log_info "Setting file permissions..."
 chown -R root:root /usr/local/cpanel/whostmgr/docroot/cgi/wp_temp_accounts
+chown root:root /usr/local/cpanel/whostmgr/docroot/addon_plugins/wp_temp_accounts_icon.png
 chown -R root:root /usr/local/cpanel/base/frontend/jupiter/wp_temp_accounts
 chown -R root:root /usr/local/cpanel/base/frontend/paper_lantern/wp_temp_accounts 2>/dev/null || true
 chown root:root /var/log/wp_temp_accounts
