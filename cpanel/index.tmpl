@@ -392,7 +392,7 @@ PROCESS '_assets/master_header.html.tt';
     async function callAPI(action, payload = {}) {
         showLoading();
         try {
-            const response = await fetch(window.location.pathname, {
+            const response = await fetch('index.cgi', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ action, payload })

@@ -13,6 +13,6 @@
         "name": "WordPress Temporary Accounts",
         "type": "link",
         "id": "wp_temp_accounts",
-        "uri": "wp_temp_accounts/index.cgi"
+        "uri": "wp_temp_accounts/index.tmpl"
     }
 ]

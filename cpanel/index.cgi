@@ -16,6 +16,7 @@ run() unless caller();
 sub run {
     my $cgi = CGI->new();
     my $request_method = $ENV{REQUEST_METHOD} || 'GET';
+    my $mode = $cgi->param('mode') || '';
 
     # Get authenticated user
     my $cpanel_user = $ENV{REMOTE_USER} || '';
@@ -33,7 +34,13 @@ sub run {
         handle_api_request($cgi, $cpanel_user);
     } else {
         # Handle GET requests (UI rendering)
-        render_ui($cpanel_user);
+        # If called with mode=iframe, output the full HTML interface
+        if ($mode eq 'iframe') {
+            print "Content-type: text/html\r\n\r\n";
+            print_html_interface($cpanel_user);
+        } else {
+            render_ui($cpanel_user);
+        }
     }
 
     exit;
@@ -195,12 +202,26 @@ sub handle_api_request {
 sub render_ui {
     my ($cpanel_user) = @_;
 
-    # Output the HTML interface directly
-    # This ensures compatibility even if Template Toolkit fails
-    print "Content-type: text/html\r\n\r\n";
+    # This function should not be called when properly configured
+    # The template should be loaded directly by cPanel
+    # If we get here, it means something is misconfigured
 
-    # Use the fallback HTML interface
-    print_html_interface($cpanel_user);
+    print "Content-type: text/html\r\n\r\n";
+    print qq{
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Configuration Error</title>
+        </head>
+        <body>
+            <h1>Configuration Error</h1>
+            <p>The cPanel plugin is not properly configured.</p>
+            <p>The plugin should be accessed via the template file (index.tmpl), not the CGI directly.</p>
+            <p>Please ensure install.json points to "wp_temp_accounts/index.tmpl" and re-register the plugin.</p>
+            <p>Current user: $cpanel_user</p>
+        </body>
+        </html>
+    };
 
     return;
 }
