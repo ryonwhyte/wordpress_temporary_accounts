@@ -1,13 +1,13 @@
 [
     {
         "name": "WordPress Tools",
-        "icon": "group_wordpress.svg",
+        "icon": "wp_temp_accounts/group_wordpress.svg",
         "order": 100,
         "type": "group",
         "id": "wordpress_tools"
     },
     {
-        "icon": "wp_temp_accounts.svg",
+        "icon": "wp_temp_accounts/wp_temp_accounts.svg",
         "group_id": "wordpress_tools",
         "order": 1,
         "name": "WordPress Temporary Accounts",
