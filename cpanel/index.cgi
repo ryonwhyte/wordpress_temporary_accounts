@@ -194,28 +194,60 @@ sub handle_api_request {
 sub render_ui {
     my ($cpanel_user) = @_;
 
-    # Template file path is relative to the theme directory
-    # Template is at: /usr/local/cpanel/base/frontend/jupiter/wp_temp_accounts/index.tmpl
-    # So the path is: wp_temp_accounts/index.tmpl
+    # Use Cpanel::Template to process the template file
+    print "Content-type: text/html\r\n\r\n";
 
-    eval {
-        Cpanel::Template::process_template(
-            'cpanel',
-            {
-                'template_file' => 'wp_temp_accounts/index.tmpl',
-                'print'         => 1,
-            }
-        );
-    };
+    # Process template with cPanel's Template system
+    my $result = Cpanel::Template::process_template(
+        'cpanel',
+        {
+            'template_file' => 'wp_temp_accounts/index.tmpl',
+            'print'         => 1,
+            'cpanel_user'   => $cpanel_user,
+        }
+    );
 
-    if ($@) {
-        # Template processing failed - output error
-        print "Content-type: text/html\r\n\r\n";
-        print "<h1>Template Error</h1>\n";
-        print "<pre>" . $@ . "</pre>\n";
+    # If template processing fails, show a simple fallback interface
+    unless ($result) {
+        print_fallback_ui($cpanel_user);
     }
 
     return;
+}
+
+sub print_fallback_ui {
+    my ($cpanel_user) = @_;
+
+    # Fallback to a simple HTML interface if template fails
+    print <<'HTML';
+<!DOCTYPE html>
+<html>
+<head>
+    <title>WordPress Temporary Accounts</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        .container { max-width: 1200px; margin: 0 auto; }
+        .error { background: #fee; padding: 10px; border: 1px solid #fcc; margin: 10px 0; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>WordPress Temporary Accounts</h1>
+        <div class="error">
+            <p>The template rendering failed. Using fallback interface.</p>
+            <p>Please check that the template file exists at:</p>
+            <code>/usr/local/cpanel/base/frontend/jupiter/wp_temp_accounts/index.tmpl</code>
+        </div>
+        <p>User: <strong>
+HTML
+    print $cpanel_user;
+    print <<'HTML';
+        </strong></p>
+        <p>Please contact your administrator if this issue persists.</p>
+    </div>
+</body>
+</html>
+HTML
 }
 
 ###############################################################################
