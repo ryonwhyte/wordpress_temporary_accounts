@@ -7,6 +7,7 @@ use strict;
 use warnings;
 use lib '/usr/local/cpanel';
 use Cpanel::JSON();
+use Cpanel::Template();
 use CGI();
 
 run() unless caller();
@@ -193,20 +194,28 @@ sub handle_api_request {
 sub render_ui {
     my ($cpanel_user) = @_;
 
-    # Use cPanel's Template Toolkit for proper theme integration
-    use Cpanel::Template ();
-
     # Template file path is relative to the theme directory
     # Template is at: /usr/local/cpanel/base/frontend/jupiter/wp_temp_accounts/index.tmpl
     # So the path is: wp_temp_accounts/index.tmpl
-    Cpanel::Template::process_template(
-        'cpanel',
-        {
-            'template_file' => 'wp_temp_accounts/index.tmpl',
-            'print'         => 1,
-        }
-    );
 
+    eval {
+        Cpanel::Template::process_template(
+            'cpanel',
+            {
+                'template_file' => 'wp_temp_accounts/index.tmpl',
+                'print'         => 1,
+            }
+        );
+    };
+
+    if ($@) {
+        # Template processing failed - output error
+        print "Content-type: text/html\r\n\r\n";
+        print "<h1>Template Error</h1>\n";
+        print "<pre>" . $@ . "</pre>\n";
+    }
+
+    return;
 }
 
 ###############################################################################
