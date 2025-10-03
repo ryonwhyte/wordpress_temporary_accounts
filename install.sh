@@ -75,9 +75,9 @@ install -m 755 cpanel/index.live.cgi /usr/local/cpanel/base/frontend/jupiter/wp_
 
 # Install cPanel template
 log_info "Installing cPanel template..."
-# cPanel looks for templates in the theme's root directory, not in a templates/ subdirectory
-mkdir -p /usr/local/cpanel/base/frontend/jupiter/wp_temp_accounts
-install -m 644 cpanel/index.tmpl /usr/local/cpanel/base/frontend/jupiter/wp_temp_accounts/
+# cPanel looks for templates in the templates/ subdirectory
+mkdir -p /usr/local/cpanel/base/frontend/jupiter/templates/wp_temp_accounts
+install -m 644 cpanel/index.tmpl /usr/local/cpanel/base/frontend/jupiter/templates/wp_temp_accounts/
 
 # Install icons
 install -m 644 cpanel/group_wordpress.svg /usr/local/cpanel/base/frontend/jupiter/wp_temp_accounts/
