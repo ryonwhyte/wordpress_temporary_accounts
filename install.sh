@@ -84,28 +84,39 @@ install -m 644 cpanel/wp_temp_accounts.svg /usr/local/cpanel/base/frontend/jupit
 # Install install.json for dynamicui
 install -m 644 cpanel/install.json /usr/local/cpanel/base/frontend/jupiter/wp_temp_accounts/
 
-# Create plugin tarball for install_plugin script
+# Create plugin tarball for install_plugin script with correct structure
 log_info "Creating plugin package..."
 TEMP_DIR=$(mktemp -d)
-cp -r /usr/local/cpanel/base/frontend/jupiter/wp_temp_accounts "$TEMP_DIR/"
+
+# Create the plugin directory structure as required by install_plugin
+mkdir -p "$TEMP_DIR/wp_temp_accounts"
+cp cpanel/install.json "$TEMP_DIR/install.json"  # install.json must be at root of tar
+cp cpanel/index.tmpl "$TEMP_DIR/wp_temp_accounts/"
+cp cpanel/*.svg "$TEMP_DIR/wp_temp_accounts/"
+
+# Create the tar file with the correct structure
 cd "$TEMP_DIR"
-tar czf wp_temp_accounts.tar.gz wp_temp_accounts/
+tar czf wp_temp_accounts.tar.gz install.json wp_temp_accounts/
 cd - > /dev/null
 
 # Install plugin using official install_plugin script
 if [ -x /usr/local/cpanel/scripts/install_plugin ]; then
     log_info "Registering cPanel plugin with dynamicui..."
     /usr/local/cpanel/scripts/install_plugin "$TEMP_DIR/wp_temp_accounts.tar.gz" --theme jupiter
-    rm -rf "$TEMP_DIR"
+
+    # If install_plugin succeeded, we don't need the manual configuration
+    if [ $? -eq 0 ]; then
+        log_info "Plugin registered successfully via install_plugin"
+        rm -rf "$TEMP_DIR"
+    else
+        log_warn "install_plugin failed, using manual registration..."
+        rm -rf "$TEMP_DIR"
+
+        # Manual fallback will be handled below
+    fi
 else
     log_info "install_plugin script not found, using manual dynamicui registration..."
     rm -rf "$TEMP_DIR"
-
-    # Manually register with dynamicui by modifying dynamicui files
-    # This is the fallback method for older cPanel versions
-    mkdir -p /usr/local/cpanel/base/frontend/paper_lantern/wp_temp_accounts 2>/dev/null || true
-    install -m 755 cpanel/index.cgi /usr/local/cpanel/base/frontend/paper_lantern/wp_temp_accounts/index.cgi 2>/dev/null || true
-    install -m 644 packaging/wp_temp_accounts_icon.png /usr/local/cpanel/base/frontend/paper_lantern/wp_temp_accounts/ 2>/dev/null || true
 fi
 
 # Clear cPanel UI caches
@@ -117,37 +128,9 @@ log_info "Cleaning up old AppConfig entries..."
 /usr/local/cpanel/bin/unregister_appconfig wp_temp_accounts_cpanel 2>/dev/null || true
 rm -f /var/cpanel/apps/wp_temp_accounts_cpanel.conf 2>/dev/null || true
 
-# Manually create dynamicui configuration to ensure proper registration
-log_info "Creating dynamicui configuration..."
-mkdir -p /usr/local/cpanel/base/frontend/jupiter/dynamicui
-
-cat > /usr/local/cpanel/base/frontend/jupiter/dynamicui/dynamicui_wp_temp_accounts.conf << 'EOF'
-[
-    {
-        "name": "WordPress Tools",
-        "icon": "../wp_temp_accounts/group_wordpress.svg",
-        "order": 100,
-        "type": "group",
-        "id": "wordpress_tools"
-    },
-    {
-        "icon": "../wp_temp_accounts/wp_temp_accounts.svg",
-        "group_id": "wordpress_tools",
-        "order": 1,
-        "name": "WordPress Temporary Accounts",
-        "type": "include",
-        "id": "wp_temp_accounts",
-        "uri": "../wp_temp_accounts/index.tmpl",
-        "file": "wp_temp_accounts/index.tmpl"
-    }
-]
-EOF
-
-# Rebuild dynamicui to register the plugin
-log_info "Rebuilding dynamicui..."
-if [ -x /usr/local/cpanel/scripts/build_jupiter_dynamicui ]; then
-    /usr/local/cpanel/scripts/build_jupiter_dynamicui
-fi
+# Remove any old manual dynamicui configurations
+rm -f /usr/local/cpanel/base/frontend/jupiter/dynamicui/dynamicui_wp_temp_accounts.conf 2>/dev/null || true
+rm -f /usr/local/cpanel/base/frontend/jupiter/dynamicui/dynamicui_wptemp*.conf 2>/dev/null || true
 
 log_info "cPanel plugin files installed"
 
