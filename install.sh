@@ -71,7 +71,7 @@ log_info "Installing cPanel plugin..."
 mkdir -p /usr/local/cpanel/base/frontend/jupiter/wp_temp_accounts
 
 # Install CGI script and template
-install -m 755 cpanel/index.live.cgi /usr/local/cpanel/base/frontend/jupiter/wp_temp_accounts/
+install -m 755 cpanel/index.cgi /usr/local/cpanel/base/frontend/jupiter/wp_temp_accounts/
 install -m 644 cpanel/index.tmpl /usr/local/cpanel/base/frontend/jupiter/wp_temp_accounts/
 
 # Install icons
