@@ -117,6 +117,38 @@ log_info "Cleaning up old AppConfig entries..."
 /usr/local/cpanel/bin/unregister_appconfig wp_temp_accounts_cpanel 2>/dev/null || true
 rm -f /var/cpanel/apps/wp_temp_accounts_cpanel.conf 2>/dev/null || true
 
+# Manually create dynamicui configuration to ensure proper registration
+log_info "Creating dynamicui configuration..."
+mkdir -p /usr/local/cpanel/base/frontend/jupiter/dynamicui
+
+cat > /usr/local/cpanel/base/frontend/jupiter/dynamicui/dynamicui_wp_temp_accounts.conf << 'EOF'
+[
+    {
+        "name": "WordPress Tools",
+        "icon": "../wp_temp_accounts/group_wordpress.svg",
+        "order": 100,
+        "type": "group",
+        "id": "wordpress_tools"
+    },
+    {
+        "icon": "../wp_temp_accounts/wp_temp_accounts.svg",
+        "group_id": "wordpress_tools",
+        "order": 1,
+        "name": "WordPress Temporary Accounts",
+        "type": "include",
+        "id": "wp_temp_accounts",
+        "uri": "../wp_temp_accounts/index.tmpl",
+        "file": "wp_temp_accounts/index.tmpl"
+    }
+]
+EOF
+
+# Rebuild dynamicui to register the plugin
+log_info "Rebuilding dynamicui..."
+if [ -x /usr/local/cpanel/scripts/build_jupiter_dynamicui ]; then
+    /usr/local/cpanel/scripts/build_jupiter_dynamicui
+fi
+
 log_info "cPanel plugin files installed"
 
 # Register with WHM

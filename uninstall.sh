@@ -77,6 +77,36 @@ rm -rf /usr/local/cpanel/base/frontend/jupiter/wp_temp_accounts
 rm -rf /usr/local/cpanel/base/frontend/paper_lantern/wp_temp_accounts
 rm -rf /usr/local/cpanel/base/3rdparty/wp_temp_accounts
 
+# Remove from dynamicui registry
+log_info "Removing from dynamicui registry..."
+rm -f /usr/local/cpanel/base/frontend/jupiter/dynamicui/dynamicui_wp_temp_accounts.conf
+rm -f /usr/local/cpanel/base/frontend/jupiter/dynamicui/dynamicui_wp_temp_accounts.yaml
+rm -f /usr/local/cpanel/base/frontend/jupiter/config/dynamicui_local.yaml
+grep -l "wp_temp_accounts" /usr/local/cpanel/base/frontend/jupiter/dynamicui/* 2>/dev/null | xargs rm -f 2>/dev/null || true
+
+# Clear dynamicui caches
+log_info "Clearing dynamicui caches..."
+rm -rf /usr/local/cpanel/base/frontend/jupiter/dynamicui_data/*
+rm -rf /usr/local/cpanel/base/frontend/jupiter/.dynamicui_cache
+rm -rf /usr/local/cpanel/base/frontend/jupiter/.cpanelcache/*
+rm -rf /home/*/.cpanel/dynamicui/* 2>/dev/null || true
+rm -rf /var/cpanel/dynamicui/* 2>/dev/null || true
+
+# Clear user-specific caches
+log_info "Clearing user caches..."
+rm -rf /home/*/.cpanel/datastore/* 2>/dev/null || true
+rm -rf /home/*/.cpanel/nvdata/* 2>/dev/null || true
+
+# Remove from feature lists if exists
+log_info "Removing from feature lists..."
+/usr/local/cpanel/bin/manage_features remove wp_temp_accounts 2>/dev/null || true
+
+# Rebuild dynamicui after removal
+log_info "Rebuilding dynamicui..."
+if [ -x /usr/local/cpanel/scripts/build_jupiter_dynamicui ]; then
+    /usr/local/cpanel/scripts/build_jupiter_dynamicui
+fi
+
 # Remove log directory
 log_info "Removing log directory..."
 rm -rf /var/log/wp_temp_accounts
