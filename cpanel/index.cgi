@@ -195,48 +195,17 @@ sub handle_api_request {
 sub render_ui {
     my ($cpanel_user) = @_;
 
-    # Set up proper cPanel template variables
-    my %template_vars = (
-        'cpanel_user' => $cpanel_user,
-        'plugin_path' => 'wp_temp_accounts',
-    );
-
-    # Output headers
+    # Output the HTML interface directly
+    # This ensures compatibility even if Template Toolkit fails
     print "Content-type: text/html\r\n\r\n";
 
-    # Process the template using cPanel's Template module
-    # The template path is relative to the theme directory
-    eval {
-        Cpanel::Template::process_template(
-            'cpanel',
-            {
-                'template_file' => 'wp_temp_accounts/index.tmpl',
-                'print'         => 1,
-                %template_vars
-            }
-        );
-    };
-
-    if ($@) {
-        # If template fails, show a simple error with the actual error details
-        print qq{
-            <html>
-            <head><title>WordPress Temporary Accounts - Error</title></head>
-            <body>
-                <h1>Template Processing Error</h1>
-                <p>Unable to load the cPanel template.</p>
-                <pre>$@</pre>
-                <p>Template path should be: /usr/local/cpanel/base/frontend/jupiter/wp_temp_accounts/index.tmpl</p>
-                <p>Current user: $cpanel_user</p>
-            </body>
-            </html>
-        };
-    }
+    # Use the fallback HTML interface
+    print_html_interface($cpanel_user);
 
     return;
 }
 
-sub print_html_interface_disabled {
+sub print_html_interface {
     my ($cpanel_user) = @_;
 
     # Output the complete HTML interface directly
