@@ -104,9 +104,18 @@ else
     # Manually register with dynamicui by modifying dynamicui files
     # This is the fallback method for older cPanel versions
     mkdir -p /usr/local/cpanel/base/frontend/paper_lantern/wp_temp_accounts 2>/dev/null || true
-    install -m 755 cpanel/index.live.cgi /usr/local/cpanel/base/frontend/paper_lantern/wp_temp_accounts/index.cgi 2>/dev/null || true
+    install -m 755 cpanel/index.cgi /usr/local/cpanel/base/frontend/paper_lantern/wp_temp_accounts/index.cgi 2>/dev/null || true
     install -m 644 packaging/wp_temp_accounts_icon.png /usr/local/cpanel/base/frontend/paper_lantern/wp_temp_accounts/ 2>/dev/null || true
 fi
+
+# Clear cPanel UI caches
+log_info "Clearing cPanel caches..."
+rm -f /usr/local/cpanel/base/frontend/jupiter/.cpanelcache/* 2>/dev/null || true
+
+# Clean up any old cPanel AppConfig (from older versions)
+log_info "Cleaning up old AppConfig entries..."
+/usr/local/cpanel/bin/unregister_appconfig wp_temp_accounts_cpanel 2>/dev/null || true
+rm -f /var/cpanel/apps/wp_temp_accounts_cpanel.conf 2>/dev/null || true
 
 log_info "cPanel plugin files installed"
 
