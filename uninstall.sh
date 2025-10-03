@@ -74,7 +74,6 @@ rm -f /usr/local/cpanel/whostmgr/docroot/addon_plugins/wp_temp_accounts_icon.png
 # Remove cPanel files
 log_info "Removing cPanel files..."
 rm -rf /usr/local/cpanel/base/frontend/jupiter/wp_temp_accounts
-rm -rf /usr/local/cpanel/base/frontend/jupiter/templates/wp_temp_accounts
 rm -rf /usr/local/cpanel/base/frontend/paper_lantern/wp_temp_accounts
 
 # Remove log directory
