@@ -2,13 +2,15 @@
 # cPanel Template for WordPress Temporary Accounts
 # Uses cPanel's template system for proper theme integration
 
-SET CPANEL.CPVAR.dprefix = "../";
+USE Cpanel;
 
 # Set page metadata
-WRAPPER '_assets/master.html.tt'
-    page_title = 'WordPress Temporary Accounts'
-    page_scripts = []
-    page_styles = [];
+SET CPANEL.CPVAR.headerimg = "wp_temp_accounts.svg";
+SET CPANEL.CPVAR.pagetitle = "WordPress Temporary Accounts";
+SET CPANEL.CPVAR.dprefix = "../";
+
+# Include cPanel header
+PROCESS '_assets/master_header.html.tt';
 %]
 
 <style type="text/css">
@@ -725,4 +727,7 @@ WRAPPER '_assets/master.html.tt'
     });
 </script>
 
-[% END %]
+[%
+# Include cPanel footer
+PROCESS '_assets/master_footer.html.tt';
+%]

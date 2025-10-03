@@ -8,6 +8,7 @@ use warnings;
 use lib '/usr/local/cpanel';
 use Cpanel::JSON();
 use Cpanel::Template();
+use Cpanel::LiveAPI();
 use CGI();
 
 run() unless caller();
@@ -194,60 +195,490 @@ sub handle_api_request {
 sub render_ui {
     my ($cpanel_user) = @_;
 
-    # Use Cpanel::Template to process the template file
-    print "Content-type: text/html\r\n\r\n";
-
-    # Process template with cPanel's Template system
-    my $result = Cpanel::Template::process_template(
-        'cpanel',
-        {
-            'template_file' => 'wp_temp_accounts/index.tmpl',
-            'print'         => 1,
-            'cpanel_user'   => $cpanel_user,
-        }
+    # Set up proper cPanel template variables
+    my %template_vars = (
+        'cpanel_user' => $cpanel_user,
+        'plugin_path' => 'wp_temp_accounts',
     );
 
-    # If template processing fails, show a simple fallback interface
-    unless ($result) {
-        print_fallback_ui($cpanel_user);
+    # Output headers
+    print "Content-type: text/html\r\n\r\n";
+
+    # Process the template using cPanel's Template module
+    # The template path is relative to the theme directory
+    eval {
+        Cpanel::Template::process_template(
+            'cpanel',
+            {
+                'template_file' => 'wp_temp_accounts/index.tmpl',
+                'print'         => 1,
+                %template_vars
+            }
+        );
+    };
+
+    if ($@) {
+        # If template fails, show a simple error with the actual error details
+        print qq{
+            <html>
+            <head><title>WordPress Temporary Accounts - Error</title></head>
+            <body>
+                <h1>Template Processing Error</h1>
+                <p>Unable to load the cPanel template.</p>
+                <pre>$@</pre>
+                <p>Template path should be: /usr/local/cpanel/base/frontend/jupiter/wp_temp_accounts/index.tmpl</p>
+                <p>Current user: $cpanel_user</p>
+            </body>
+            </html>
+        };
     }
 
     return;
 }
 
-sub print_fallback_ui {
+sub print_html_interface_disabled {
     my ($cpanel_user) = @_;
 
-    # Fallback to a simple HTML interface if template fails
-    print <<'HTML';
+    # Output the complete HTML interface directly
+    print <<'HTML_START';
 <!DOCTYPE html>
 <html>
 <head>
     <title>WordPress Temporary Accounts</title>
-    <style>
-        body { font-family: Arial, sans-serif; padding: 20px; }
-        .container { max-width: 1200px; margin: 0 auto; }
-        .error { background: #fee; padding: 10px; border: 1px solid #fcc; margin: 10px 0; }
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style type="text/css">
+        /* Plugin-specific styling */
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; padding: 20px; background: #f5f7fa; }
+        .wp-temp-container { max-width: 1200px; margin: 0 auto; }
+        .header { background: white; padding: 20px; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .header h1 { margin: 0 0 10px 0; color: #333; font-size: 24px; }
+        .status-badge {
+            display: inline-block;
+            padding: 6px 12px;
+            border-radius: 3px;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .status-ok { background: #48bb78; color: white; }
+        .status-error { background: #f56565; color: white; }
+
+        /* Tabs */
+        .tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            background: white;
+            padding: 10px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .tab-button {
+            padding: 10px 20px;
+            background: #e2e8f0;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: all 0.3s;
+        }
+        .tab-button:hover { background: #cbd5e0; }
+        .tab-button.active {
+            background: #4299e1;
+            color: white;
+        }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+
+        .wp-card {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .wp-card h2 {
+            color: #2d3748;
+            font-size: 18px;
+            margin: 0 0 15px 0;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #e2e8f0;
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 500;
+            color: #4a5568;
+        }
+        .form-group input, .form-group select {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid #cbd5e0;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        .form-group input:focus, .form-group select:focus {
+            outline: none;
+            border-color: #4299e1;
+            box-shadow: 0 0 0 3px rgba(66,153,225,0.1);
+        }
+
+        .btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .btn-primary {
+            background: #4299e1;
+            color: white;
+        }
+        .btn-primary:hover { background: #3182ce; }
+        .btn-danger {
+            background: #f56565;
+            color: white;
+        }
+        .btn-danger:hover { background: #e53e3e; }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #e2e8f0;
+        }
+        th {
+            background: #f7fafc;
+            font-weight: 600;
+            color: #4a5568;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        tr:hover { background: #f7fafc; }
+
+        #loading {
+            display: none;
+            padding: 20px;
+            text-align: center;
+            background: #fff;
+            border-radius: 8px;
+            margin: 20px 0;
+        }
+        #error-message {
+            display: none;
+            background: #fff5f5;
+            color: #c53030;
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+            border-left: 4px solid #f56565;
+        }
+
+        /* Password Modal */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+        .modal.show { display: flex; }
+        .modal-content {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            max-width: 500px;
+            width: 90%;
+        }
+        .modal-header {
+            font-size: 20px;
+            font-weight: 600;
+            margin-bottom: 20px;
+        }
+        .password-display {
+            background: #f7fafc;
+            padding: 15px;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 16px;
+            margin: 15px 0;
+            word-break: break-all;
+        }
     </style>
 </head>
 <body>
-    <div class="container">
-        <h1>WordPress Temporary Accounts</h1>
-        <div class="error">
-            <p>The template rendering failed. Using fallback interface.</p>
-            <p>Please check that the template file exists at:</p>
-            <code>/usr/local/cpanel/base/frontend/jupiter/wp_temp_accounts/index.tmpl</code>
-        </div>
-        <p>User: <strong>
-HTML
+    <div class="wp-temp-container">
+        <div class="header">
+            <h1>WordPress Temporary Accounts</h1>
+            <p>User: <strong>
+HTML_START
     print $cpanel_user;
-    print <<'HTML';
-        </strong></p>
-        <p>Please contact your administrator if this issue persists.</p>
+    print <<'HTML_END';
+</strong></p>
+            <span id="health-status" class="status-badge status-ok">System: OK</span>
+        </div>
+
+        <div id="error-message"></div>
+        <div id="loading">Loading...</div>
+
+        <!-- Tab Navigation -->
+        <div class="tabs">
+            <button class="tab-button active" onclick="showTab('create')">Create User</button>
+            <button class="tab-button" onclick="showTab('manage')">Manage All Users</button>
+        </div>
+
+        <!-- Create User Tab -->
+        <div id="create-tab" class="tab-content active">
+            <div class="wp-card">
+                <h2>1. Select WordPress Site</h2>
+                <div class="form-group">
+                    <button id="scan-btn" class="btn btn-primary" onclick="scanWordPress()">Scan for WordPress Sites</button>
+                </div>
+                <div class="form-group" id="site-select-group" style="display:none;">
+                    <label for="wp-site">WordPress Site:</label>
+                    <select id="wp-site" onchange="siteSelected()">
+                        <option value="">-- Select a site --</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="wp-card" id="create-form" style="display:none;">
+                <h2>2. Create Temporary User</h2>
+                <div class="form-group">
+                    <label for="username">Username:</label>
+                    <input type="text" id="username" placeholder="temp_admin_123">
+                </div>
+                <div class="form-group">
+                    <label for="email">Email:</label>
+                    <input type="email" id="email" placeholder="temp@example.com">
+                </div>
+                <div class="form-group">
+                    <label for="days">Expiration (days):</label>
+                    <input type="number" id="days" value="7" min="0.0208" max="365" step="0.0001">
+                </div>
+                <button class="btn btn-primary" onclick="createUser()">Create Temporary User</button>
+            </div>
+        </div>
+
+        <!-- Manage Users Tab -->
+        <div id="manage-tab" class="tab-content">
+            <div class="wp-card">
+                <h2>All Temporary Users</h2>
+                <div class="form-group">
+                    <input type="text" id="filter-input" placeholder="Filter users..." onkeyup="filterUsers()">
+                </div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Site</th>
+                            <th>Username</th>
+                            <th>Email</th>
+                            <th>Expires</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="users-table">
+                        <tr><td colspan="5">Click "Load All Users" to view temporary users</td></tr>
+                    </tbody>
+                </table>
+                <button class="btn btn-primary" onclick="loadAllUsers()">Load All Users</button>
+            </div>
+        </div>
     </div>
+
+    <!-- Password Modal -->
+    <div id="password-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">User Created Successfully</div>
+            <p>Username: <strong id="modal-username"></strong></p>
+            <p>Password:</p>
+            <div class="password-display" id="modal-password"></div>
+            <button class="btn btn-primary" onclick="copyPassword()">Copy Password</button>
+            <button class="btn" onclick="closeModal()">Close</button>
+        </div>
+    </div>
+
+    <script>
+        let selectedSite = null;
+        let cpanelUser = '
+HTML_END
+    print $cpanel_user;
+    print <<'HTML_SCRIPT';
+';
+
+        // Tab switching
+        function showTab(tab) {
+            document.querySelectorAll('.tab-button').forEach(btn => btn.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+
+            if (tab === 'create') {
+                document.querySelector('.tab-button:nth-child(1)').classList.add('active');
+                document.getElementById('create-tab').classList.add('active');
+            } else {
+                document.querySelector('.tab-button:nth-child(2)').classList.add('active');
+                document.getElementById('manage-tab').classList.add('active');
+                loadAllUsers();
+            }
+        }
+
+        // API call helper
+        async function callAPI(action, payload = {}) {
+            const loading = document.getElementById('loading');
+            loading.style.display = 'block';
+
+            try {
+                const response = await fetch(window.location.pathname, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action, payload })
+                });
+                const data = await response.json();
+                loading.style.display = 'none';
+
+                if (!data.ok) {
+                    throw new Error(data.error?.message || 'Unknown error');
+                }
+                return data.data;
+            } catch (error) {
+                loading.style.display = 'none';
+                showError(error.message);
+                throw error;
+            }
+        }
+
+        function showError(msg) {
+            const el = document.getElementById('error-message');
+            el.textContent = msg;
+            el.style.display = 'block';
+            setTimeout(() => el.style.display = 'none', 5000);
+        }
+
+        async function scanWordPress() {
+            const sites = await callAPI('scan_wordpress', { force_scan: true });
+            const select = document.getElementById('wp-site');
+            select.innerHTML = '<option value="">-- Select a site --</option>';
+
+            sites.forEach(site => {
+                const opt = document.createElement('option');
+                opt.value = site.path;
+                opt.textContent = `${site.domain} (${site.path})`;
+                select.appendChild(opt);
+            });
+
+            document.getElementById('site-select-group').style.display = 'block';
+        }
+
+        function siteSelected() {
+            selectedSite = document.getElementById('wp-site').value;
+            if (selectedSite) {
+                document.getElementById('create-form').style.display = 'block';
+            }
+        }
+
+        async function createUser() {
+            const username = document.getElementById('username').value;
+            const email = document.getElementById('email').value;
+            const days = document.getElementById('days').value;
+
+            if (!username || !email) {
+                showError('Username and email are required');
+                return;
+            }
+
+            const result = await callAPI('create_temp_user', {
+                cpanel_user: cpanelUser,
+                site_path: selectedSite,
+                username,
+                email,
+                days: parseFloat(days)
+            });
+
+            // Show password modal
+            document.getElementById('modal-username').textContent = result.username;
+            document.getElementById('modal-password').textContent = result.password;
+            document.getElementById('password-modal').classList.add('show');
+
+            // Clear form
+            document.getElementById('username').value = '';
+            document.getElementById('email').value = '';
+        }
+
+        function copyPassword() {
+            const password = document.getElementById('modal-password').textContent;
+            navigator.clipboard.writeText(password);
+            alert('Password copied to clipboard!');
+        }
+
+        function closeModal() {
+            document.getElementById('password-modal').classList.remove('show');
+        }
+
+        async function loadAllUsers() {
+            const users = await callAPI('list_all_temp_users');
+            const tbody = document.getElementById('users-table');
+
+            if (users.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5">No temporary users found</td></tr>';
+            } else {
+                tbody.innerHTML = users.map(u => `
+                    <tr>
+                        <td>${u.site_domain}</td>
+                        <td>${u.username}</td>
+                        <td>${u.email}</td>
+                        <td>${u.expires}</td>
+                        <td><button class="btn btn-danger" onclick="deleteUser('${u.site_path}', '${u.username}')">Delete</button></td>
+                    </tr>
+                `).join('');
+            }
+        }
+
+        async function deleteUser(sitePath, username) {
+            if (!confirm(`Delete user ${username}?`)) return;
+
+            await callAPI('delete_temp_user', {
+                cpanel_user: cpanelUser,
+                site_path: sitePath,
+                username
+            });
+
+            loadAllUsers();
+        }
+
+        function filterUsers() {
+            const filter = document.getElementById('filter-input').value.toLowerCase();
+            const rows = document.querySelectorAll('#users-table tr');
+
+            rows.forEach(row => {
+                const text = row.textContent.toLowerCase();
+                row.style.display = text.includes(filter) ? '' : 'none';
+            });
+        }
+
+        // Check health on load
+        callAPI('health').catch(() => {
+            document.getElementById('health-status').textContent = 'System: Error';
+            document.getElementById('health-status').className = 'status-badge status-error';
+        });
+    </script>
 </body>
 </html>
-HTML
+HTML_SCRIPT
 }
 
 ###############################################################################
