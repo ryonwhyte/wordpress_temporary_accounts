@@ -392,7 +392,9 @@ PROCESS '_assets/master_header.html.tt';
     async function callAPI(action, payload = {}) {
         showLoading();
         try {
-            const response = await fetch('index.cgi', {
+            // Use cPanel's 3rdparty path for CGI execution
+            const url = '[% execute('Cpanel', 'get_addon_url_from_rel_path', { path => '../3rdparty/wp_temp_accounts/index.cgi' }) %]';
+            const response = await fetch(url, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ action, payload })
