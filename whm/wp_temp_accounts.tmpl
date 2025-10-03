@@ -72,6 +72,118 @@ WRAPPER 'master_templates/master.tmpl'
         border-left: 4px solid #f56565;
         font-weight: 500;
     }
+    /* Password Modal */
+    #password-modal {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.6);
+        z-index: 10000;
+        align-items: center;
+        justify-content: center;
+    }
+    #password-modal.show {
+        display: flex;
+    }
+    .modal-content {
+        background: white;
+        padding: 30px;
+        border-radius: 8px;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+        max-width: 500px;
+        width: 90%;
+    }
+    .modal-header {
+        font-size: 24px;
+        font-weight: 600;
+        color: #2d3748;
+        margin-bottom: 20px;
+        display: flex;
+        align-items: center;
+    }
+    .modal-header i {
+        color: #48bb78;
+        margin-right: 10px;
+    }
+    .password-display {
+        background: #f7fafc;
+        padding: 15px;
+        border-radius: 4px;
+        border: 2px solid #4299e1;
+        margin: 15px 0;
+        font-family: monospace;
+        font-size: 16px;
+        word-break: break-all;
+        position: relative;
+    }
+    .copy-btn {
+        background: #4299e1;
+        color: white;
+        border: none;
+        padding: 10px 20px;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 14px;
+        font-weight: 600;
+        margin-top: 10px;
+        transition: all 0.2s;
+    }
+    .copy-btn:hover {
+        background: #3182ce;
+    }
+    .copy-btn.copied {
+        background: #48bb78;
+    }
+    .modal-footer {
+        margin-top: 20px;
+        padding-top: 20px;
+        border-top: 1px solid #e2e8f0;
+    }
+    .modal-info {
+        background: #fff5f5;
+        padding: 12px;
+        border-radius: 4px;
+        border-left: 4px solid #f56565;
+        margin: 15px 0;
+        font-size: 13px;
+        color: #c53030;
+    }
+    /* Tab Navigation */
+    .tab-navigation {
+        display: flex;
+        gap: 10px;
+        margin-bottom: 20px;
+        border-bottom: 2px solid #e2e8f0;
+    }
+    .tab-button {
+        background: none;
+        border: none;
+        padding: 12px 24px;
+        cursor: pointer;
+        font-size: 14px;
+        font-weight: 600;
+        color: #718096;
+        border-bottom: 3px solid transparent;
+        transition: all 0.2s;
+        margin-bottom: -2px;
+    }
+    .tab-button:hover {
+        color: #4299e1;
+        background: #f7fafc;
+    }
+    .tab-button.active {
+        color: #4299e1;
+        border-bottom-color: #4299e1;
+    }
+    .tab-content {
+        display: none;
+    }
+    .tab-content.active {
+        display: block;
+    }
 </style>
 
 <div class="wp-temp-container">
@@ -87,9 +199,56 @@ WRAPPER 'master_templates/master.tmpl'
     <div id="error-message"></div>
     <div id="loading">Loading...</div>
 
+    <!-- Password Modal -->
+    <div id="password-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <i class="fa fa-check-circle"></i>
+                [% locale.maketext("User Created Successfully!") %]
+            </div>
+            <div>
+                <strong>[% locale.maketext("Username:") %]</strong>
+                <div id="modal-username" style="font-family: monospace; margin: 5px 0 15px 0;"></div>
+
+                <strong>[% locale.maketext("Password:") %]</strong>
+                <div class="password-display" id="modal-password"></div>
+
+                <button id="copy-password-btn" class="copy-btn">
+                    <i class="fa fa-copy"></i> [% locale.maketext("Copy Password") %]
+                </button>
+
+                <div class="modal-info">
+                    <i class="fa fa-exclamation-triangle"></i>
+                    [% locale.maketext("Save this password now! It cannot be retrieved later.") %]
+                </div>
+
+                <div style="margin-top: 10px; color: #718096; font-size: 13px;">
+                    <strong>[% locale.maketext("Expires:") %]</strong> <span id="modal-expires"></span>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button id="close-modal-btn" class="btn btn-success" style="width: 100%;">
+                    [% locale.maketext("I've Saved the Password") %]
+                </button>
+            </div>
+        </div>
+    </div>
+
     <div class="row">
         <div class="col-xs-12">
-            <!-- Step 1: Select cPanel Account -->
+            <!-- Tab Navigation -->
+            <div class="tab-navigation">
+                <button class="tab-button active" data-tab="create-tab">
+                    <i class="fa fa-plus-circle"></i> [% locale.maketext("Create User") %]
+                </button>
+                <button class="tab-button" data-tab="manage-tab">
+                    <i class="fa fa-users"></i> [% locale.maketext("Manage All Users") %]
+                </button>
+            </div>
+
+            <!-- Tab: Create User -->
+            <div id="create-tab" class="tab-content active">
+                <!-- Step 1: Select cPanel Account -->
             <div class="wp-card">
                 <h2>1. [% locale.maketext("Select cPanel Account") %]</h2>
                 <div class="form-group">
@@ -167,6 +326,41 @@ WRAPPER 'master_templates/master.tmpl'
                     </tbody>
                 </table>
             </div>
+            </div><!-- End create-tab -->
+
+            <!-- Tab: Manage All Users -->
+            <div id="manage-tab" class="tab-content">
+                <div class="wp-card">
+                    <h2>
+                        <i class="fa fa-users"></i> [% locale.maketext("All Temporary Users") %]
+                        <button id="refresh-all-users-btn" class="btn btn-primary btn-sm" style="float: right; margin-top: -5px;">
+                            <i class="fa fa-refresh"></i> [% locale.maketext("Refresh") %]
+                        </button>
+                    </h2>
+                    <div id="all-users-filter" style="margin-bottom: 15px;">
+                        <input type="text" id="filter-input" class="form-control" placeholder="[% locale.maketext('Filter by account, site, username, or email...') %]" style="max-width: 400px;">
+                    </div>
+                    <div id="all-users-container">
+                        <table class="table table-striped">
+                            <thead>
+                                <tr>
+                                    <th>[% locale.maketext("cPanel Account") %]</th>
+                                    <th>[% locale.maketext("WordPress Site") %]</th>
+                                    <th>[% locale.maketext("Username") %]</th>
+                                    <th>[% locale.maketext("Email") %]</th>
+                                    <th>[% locale.maketext("Expires") %]</th>
+                                    <th>[% locale.maketext("Actions") %]</th>
+                                </tr>
+                            </thead>
+                            <tbody id="all-users-table">
+                                <tr><td colspan="6" style="text-align: center; padding: 20px; color: #718096;">
+                                    <i class="fa fa-spinner fa-spin"></i> [% locale.maketext("Loading all temporary users...") %]
+                                </td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div><!-- End manage-tab -->
         </div>
     </div>
 </div>
@@ -369,15 +563,76 @@ WRAPPER 'master_templates/master.tmpl'
             days: days
         });
 
-        // Show password to user
+        // Show password to user in modal
         if (result && result.password) {
-            alert(`User created successfully!\n\nUsername: ${result.username}\nPassword: ${result.password}\n\nPlease copy this password now - it cannot be retrieved later.`);
+            showPasswordModal(result);
         }
 
         document.getElementById('wp-temp-username').value = '';
         document.getElementById('wp-temp-email').value = '';
-        loadUsers();
     }
+
+    // Show Password Modal
+    function showPasswordModal(result) {
+        document.getElementById('modal-username').textContent = result.username;
+        document.getElementById('modal-password').textContent = result.password;
+        document.getElementById('modal-expires').textContent = result.expires || 'N/A';
+        document.getElementById('password-modal').classList.add('show');
+
+        // Store password for copy function
+        window.currentPassword = result.password;
+    }
+
+    // Copy Password to Clipboard
+    document.getElementById('copy-password-btn').addEventListener('click', function() {
+        const password = window.currentPassword;
+        if (!password) return;
+
+        // Use Clipboard API if available, fallback to textarea method
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(password).then(() => {
+                showCopySuccess();
+            }).catch(() => {
+                fallbackCopy(password);
+            });
+        } else {
+            fallbackCopy(password);
+        }
+    });
+
+    function fallbackCopy(text) {
+        const textarea = document.createElement('textarea');
+        textarea.value = text;
+        textarea.style.position = 'fixed';
+        textarea.style.opacity = '0';
+        document.body.appendChild(textarea);
+        textarea.select();
+        try {
+            document.execCommand('copy');
+            showCopySuccess();
+        } catch (err) {
+            showError('Failed to copy password');
+        }
+        document.body.removeChild(textarea);
+    }
+
+    function showCopySuccess() {
+        const btn = document.getElementById('copy-password-btn');
+        btn.innerHTML = '<i class="fa fa-check"></i> Copied!';
+        btn.classList.add('copied');
+        setTimeout(() => {
+            btn.innerHTML = '<i class="fa fa-copy"></i> Copy Password';
+            btn.classList.remove('copied');
+        }, 2000);
+    }
+
+    // Close Modal
+    document.getElementById('close-modal-btn').addEventListener('click', function() {
+        document.getElementById('password-modal').classList.remove('show');
+        window.currentPassword = null;
+        loadUsers();  // Refresh the users table
+    });
+
 
     // Delete User
     async function deleteUser(username) {
@@ -389,6 +644,109 @@ WRAPPER 'master_templates/master.tmpl'
         });
         loadUsers();
     }
+
+    // Delete User from All Users Table
+    async function deleteUserFromAll(cpanelUser, sitePath, username) {
+        if (!confirm(`Delete user ${username} from ${sitePath}?`)) return;
+        await callAPI('delete_temp_user', {
+            cpanel_user: cpanelUser,
+            site_path: sitePath,
+            username
+        });
+        loadAllTempUsers();  // Refresh all users table
+        if (state.selectedSite === sitePath) {
+            loadUsers();  // Also refresh site-specific table if viewing that site
+        }
+    }
+
+    // Load All Temporary Users
+    let allUsersData = [];  // Store for filtering
+
+    async function loadAllTempUsers() {
+        try {
+            const users = await callAPI('list_all_temp_users');
+            allUsersData = users;
+            displayAllUsers(users);
+        } catch (error) {
+            console.error('Failed to load all temp users:', error);
+            const tbody = document.getElementById('all-users-table');
+            tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 20px; color: #e53e3e;">Failed to load users</td></tr>';
+        }
+    }
+
+    function displayAllUsers(users) {
+        const tbody = document.getElementById('all-users-table');
+
+        if (!users || users.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 20px; color: #718096;">No temporary users found</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = users.map(u => `
+            <tr>
+                <td>${escapeHtml(u.cpanel_account)}</td>
+                <td title="${escapeHtml(u.site_path)}">${escapeHtml(u.site_domain)}</td>
+                <td>${escapeHtml(u.username)}</td>
+                <td>${escapeHtml(u.email)}</td>
+                <td>${escapeHtml(u.expires)}</td>
+                <td>
+                    <button class="btn btn-danger btn-sm" onclick="deleteUserFromAll('${escapeHtml(u.cpanel_account)}', '${escapeHtml(u.site_path)}', '${escapeHtml(u.username)}')">
+                        <i class="fa fa-trash"></i> Delete
+                    </button>
+                </td>
+            </tr>
+        `).join('');
+    }
+
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    // Filter All Users Table
+    document.getElementById('filter-input').addEventListener('input', function() {
+        const filterText = this.value.toLowerCase();
+        if (!filterText) {
+            displayAllUsers(allUsersData);
+            return;
+        }
+
+        const filtered = allUsersData.filter(u => {
+            return (
+                u.cpanel_account.toLowerCase().includes(filterText) ||
+                u.site_domain.toLowerCase().includes(filterText) ||
+                u.site_path.toLowerCase().includes(filterText) ||
+                u.username.toLowerCase().includes(filterText) ||
+                u.email.toLowerCase().includes(filterText)
+            );
+        });
+
+        displayAllUsers(filtered);
+    });
+
+    // Refresh All Users Button
+    document.getElementById('refresh-all-users-btn').addEventListener('click', loadAllTempUsers);
+
+    // Tab Switching
+    document.querySelectorAll('.tab-button').forEach(button => {
+        button.addEventListener('click', function() {
+            const targetTab = this.getAttribute('data-tab');
+
+            // Update button states
+            document.querySelectorAll('.tab-button').forEach(btn => btn.classList.remove('active'));
+            this.classList.add('active');
+
+            // Update tab content visibility
+            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+            document.getElementById(targetTab).classList.add('active');
+
+            // Load data for manage tab when switching to it
+            if (targetTab === 'manage-tab') {
+                loadAllTempUsers();
+            }
+        });
+    });
 
     // Event Listeners
     document.getElementById('cpanel-account').addEventListener('change', async function() {

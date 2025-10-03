@@ -177,6 +177,10 @@ sub handle_api_request {
     elsif ($action eq 'delete_temp_user') {
         delete_temp_user($cpanel_user, $payload);
     }
+    elsif ($action eq 'list_all_temp_users') {
+        my $all_users = list_all_temp_users($cpanel_user);
+        print_json_success($all_users);
+    }
     else {
         print_json_error('unknown_action', "Unknown action: $action");
     }
@@ -956,6 +960,34 @@ sub delete_temp_user {
     write_audit_log($cpanel_user, 'DELETE_USER_SUCCESS', "user=$username site=$site_path", "success");
 
     print_json_success({ deleted => $username });
+}
+
+sub list_all_temp_users {
+    my ($cpanel_user) = @_;
+    my @all_temp_users;
+
+    # Get all WordPress sites for this user
+    my $sites = scan_wordpress($cpanel_user, 0);  # Use cached results
+
+    foreach my $site (@$sites) {
+        my $site_path = $site->{path};
+        my $site_domain = $site->{domain};
+
+        # Get temp users for this site
+        my $users = list_temp_users($cpanel_user, $site_path);
+
+        foreach my $user (@$users) {
+            push @all_temp_users, {
+                site_domain => $site_domain,
+                site_path => $site_path,
+                username => $user->{username},
+                email => $user->{email},
+                expires => $user->{expires}
+            };
+        }
+    }
+
+    return \@all_temp_users;
 }
 
 ###############################################################################
