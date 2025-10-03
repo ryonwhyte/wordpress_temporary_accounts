@@ -44,6 +44,12 @@ mkdir -p /usr/local/cpanel/base/frontend/paper_lantern/wp_temp_accounts
 mkdir -p /var/log/wp_temp_accounts
 mkdir -p /var/cache/wp_temp_accounts
 
+# Create empty registry file
+log_info "Creating registry file..."
+echo '{"users":[]}' > /var/cache/wp_temp_accounts/registry.json
+chmod 0600 /var/cache/wp_temp_accounts/registry.json
+chown root:root /var/cache/wp_temp_accounts/registry.json
+
 # Install WHM plugin
 log_info "Installing WHM plugin..."
 install -m 755 whm/wp_temp_accounts.cgi /usr/local/cpanel/whostmgr/docroot/cgi/wp_temp_accounts/

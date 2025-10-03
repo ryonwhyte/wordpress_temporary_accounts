@@ -882,6 +882,20 @@ sub create_temp_user {
     `sudo -u $cpanel_user wp user meta update "$username" wp_temp_user 1 --path="$site_path"`;
     `sudo -u $cpanel_user wp user meta update "$username" wp_temp_expires $expires --path="$site_path"`;
 
+    # Get site domain for registry
+    my $site_domain = extract_domain_from_site_path($site_path, $cpanel_user);
+
+    # Add to registry
+    add_to_registry({
+        cpanel_account => $cpanel_user,
+        site_domain => $site_domain,
+        site_path => $site_path,
+        username => $username,
+        email => $email,
+        created => time(),
+        expires => $expires
+    });
+
     # Log successful creation
     write_audit_log($cpanel_user, 'CREATE_USER_SUCCESS', "user=$username site=$site_path days=$days", "success");
 
@@ -956,6 +970,9 @@ sub delete_temp_user {
         return;
     }
 
+    # Remove from registry
+    remove_from_registry($cpanel_user, $site_path, $username);
+
     # Log successful deletion
     write_audit_log($cpanel_user, 'DELETE_USER_SUCCESS', "user=$username site=$site_path", "success");
 
@@ -964,30 +981,122 @@ sub delete_temp_user {
 
 sub list_all_temp_users {
     my ($cpanel_user) = @_;
-    my @all_temp_users;
 
-    # Get all WordPress sites for this user
-    my $sites = scan_wordpress($cpanel_user, 0);  # Use cached results
+    # Get user's temp users from registry - instant!
+    my $users = get_all_temp_users_from_registry($cpanel_user);
 
-    foreach my $site (@$sites) {
-        my $site_path = $site->{path};
-        my $site_domain = $site->{domain};
-
-        # Get temp users for this site
-        my $users = list_temp_users($cpanel_user, $site_path);
-
-        foreach my $user (@$users) {
-            push @all_temp_users, {
-                site_domain => $site_domain,
-                site_path => $site_path,
-                username => $user->{username},
-                email => $user->{email},
-                expires => $user->{expires}
-            };
+    # Format expires timestamp as readable date
+    foreach my $user (@$users) {
+        if ($user->{expires} && $user->{expires} =~ /^\d+$/) {
+            $user->{expires} = scalar localtime($user->{expires});
         }
     }
 
-    return \@all_temp_users;
+    return $users;
+}
+
+###############################################################################
+# Registry Management
+###############################################################################
+
+sub get_registry_path {
+    return '/var/cache/wp_temp_accounts/registry.json';
+}
+
+sub load_registry {
+    my $registry_file = get_registry_path();
+
+    # Create empty registry if doesn't exist
+    unless (-f $registry_file) {
+        return { users => [] };
+    }
+
+    # Read registry file
+    if (open my $fh, '<', $registry_file) {
+        local $/;
+        my $json = <$fh>;
+        close $fh;
+
+        my $data = eval { Cpanel::JSON::Load($json) };
+        if ($@) {
+            write_audit_log('', 'REGISTRY_LOAD_ERROR', "error=$@", 'failed');
+            return { users => [] };
+        }
+
+        return $data;
+    }
+
+    return { users => [] };
+}
+
+sub save_registry {
+    my ($data) = @_;
+
+    my $registry_file = get_registry_path();
+    my $registry_dir = '/var/cache/wp_temp_accounts';
+
+    # Ensure directory exists
+    unless (-d $registry_dir) {
+        mkdir($registry_dir, 0750) or return 0;
+        chown 0, 0, $registry_dir;
+    }
+
+    # Write with file locking
+    if (open my $fh, '>', $registry_file) {
+        flock($fh, 2);  # LOCK_EX
+        print $fh Cpanel::JSON::Dump($data);
+        flock($fh, 8);  # LOCK_UN
+        close $fh;
+
+        # Set restrictive permissions
+        chmod 0600, $registry_file;
+        chown 0, 0, $registry_file;
+
+        return 1;
+    }
+
+    return 0;
+}
+
+sub add_to_registry {
+    my ($user_data) = @_;
+
+    my $registry = load_registry();
+    push @{$registry->{users}}, $user_data;
+
+    return save_registry($registry);
+}
+
+sub remove_from_registry {
+    my ($cpanel_user, $site_path, $username) = @_;
+
+    my $registry = load_registry();
+    my @filtered = grep {
+        !($_->{cpanel_account} eq $cpanel_user &&
+          $_->{site_path} eq $site_path &&
+          $_->{username} eq $username)
+    } @{$registry->{users}};
+
+    $registry->{users} = \@filtered;
+
+    return save_registry($registry);
+}
+
+sub get_all_temp_users_from_registry {
+    my ($cpanel_user) = @_;
+    my $registry = load_registry();
+
+    # Filter to only this cPanel user's sites
+    my @filtered = grep { $_->{cpanel_account} eq $cpanel_user } @{$registry->{users}};
+
+    return \@filtered;
+}
+
+sub extract_domain_from_site_path {
+    my ($site_path, $cpanel_user) = @_;
+
+    my $homedir = (getpwnam($cpanel_user))[7];
+    return extract_domain_from_path($site_path, $homedir);
 }
 
 ###############################################################################

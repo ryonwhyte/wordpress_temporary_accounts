@@ -345,24 +345,6 @@ WRAPPER '_assets/master.html.tt'
             </div>
             <button id="create-btn" class="btn btn-success">Create Temporary User</button>
         </div>
-
-        <!-- Step 3: Manage Users -->
-        <div class="wp-card" id="users-section" style="display:none;">
-            <h2>3. Temporary Users</h2>
-            <table class="table table-striped">
-                <thead>
-                    <tr>
-                        <th>Username</th>
-                        <th>Email</th>
-                        <th>Expires</th>
-                        <th>Actions</th>
-                    </tr>
-                </thead>
-                <tbody id="users-table">
-                    <tr><td colspan="4">No temporary users found</td></tr>
-                </tbody>
-            </table>
-        </div>
         </div><!-- End create-tab -->
 
         <!-- Tab: Manage All Users -->
@@ -483,36 +465,12 @@ WRAPPER '_assets/master.html.tt'
         }
     }
 
-    // Load Users
+    // Stub for loadUsers - no longer needed with new tab-based UI
+    // Just refresh the all-users tab if it's active
     async function loadUsers() {
-        const sitePath = document.getElementById('wp-site').value;
-        if (!sitePath) {
-            console.log('loadUsers: No site path selected');
-            return;
-        }
-
-        console.log('loadUsers: Loading users for', sitePath);
-        state.selectedSite = sitePath;
-        document.getElementById('create-user-section').style.display = 'block';
-        document.getElementById('users-section').style.display = 'block';
-
-        const users = await callAPI('list_temp_users', { site_path: sitePath });
-        console.log('loadUsers: Received users:', users);
-        const tbody = document.getElementById('users-table');
-
-        if (!users || users.length === 0) {
-            console.log('loadUsers: No users found');
-            tbody.innerHTML = '<tr><td colspan="4">No temporary users found</td></tr>';
-        } else {
-            console.log('loadUsers: Displaying', users.length, 'users');
-            tbody.innerHTML = users.map(u => `
-                <tr>
-                    <td>${u.username}</td>
-                    <td>${u.email}</td>
-                    <td>${u.expires}</td>
-                    <td><button class="btn btn-danger btn-sm" onclick="deleteUser('${u.username}')">Delete</button></td>
-                </tr>
-            `).join('');
+        // Refresh all users table instead
+        if (document.getElementById('manage-tab').classList.contains('active')) {
+            loadAllTempUsers();
         }
     }
 
@@ -747,7 +705,16 @@ WRAPPER '_assets/master.html.tt'
 
     // Event Listeners
     document.getElementById('scan-btn').addEventListener('click', scanWordPress);
-    document.getElementById('wp-site').addEventListener('change', loadUsers);
+    document.getElementById('wp-site').addEventListener('change', function() {
+        const selectedSite = this.value;
+        if (selectedSite) {
+            state.selectedSite = selectedSite;
+            // Auto-show create form when site is selected
+            document.getElementById('create-user-section').style.display = 'block';
+        } else {
+            document.getElementById('create-user-section').style.display = 'none';
+        }
+    });
     document.getElementById('create-btn').addEventListener('click', createUser);
 
     // Initialize
