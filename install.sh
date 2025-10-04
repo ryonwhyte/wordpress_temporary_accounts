@@ -67,10 +67,19 @@ install -m 644 whm/wp_temp_accounts.tmpl /usr/local/cpanel/whostmgr/docroot/temp
 # Install cPanel plugin
 log_info "Installing cPanel plugin files..."
 
+# Clean up any old dynamicui configurations first
+log_info "Cleaning up old dynamicui configurations..."
+rm -f /usr/local/cpanel/base/frontend/jupiter/dynamicui/dynamicui_wp_temp_accounts.conf 2>/dev/null || true
+rm -f /usr/local/cpanel/base/frontend/jupiter/dynamicui/dynamicui_wptemp*.conf 2>/dev/null || true
+rm -f /usr/local/cpanel/base/frontend/paper_lantern/dynamicui/dynamicui_wp_temp_accounts.conf 2>/dev/null || true
+rm -f /usr/local/cpanel/base/frontend/paper_lantern/dynamicui/dynamicui_wptemp*.conf 2>/dev/null || true
+
 # Create plugin directories for both themes
 mkdir -p /usr/local/cpanel/base/frontend/jupiter/wp_temp_accounts
 mkdir -p /usr/local/cpanel/base/frontend/paper_lantern/wp_temp_accounts
 mkdir -p /usr/local/cpanel/base/3rdparty/wp_temp_accounts
+mkdir -p /usr/local/cpanel/base/frontend/jupiter/dynamicui
+mkdir -p /usr/local/cpanel/base/frontend/paper_lantern/dynamicui
 
 # Install CGI backend to 3rdparty directory (for proper execution context)
 install -m 755 cpanel/index.live.cgi /usr/local/cpanel/base/3rdparty/wp_temp_accounts/
@@ -90,50 +99,43 @@ for theme in jupiter paper_lantern; do
     install -m 644 cpanel/wp_temp_accounts.svg /usr/local/cpanel/base/frontend/$theme/wp_temp_accounts/
 done
 
-# Create plugin tarball for install_plugin script
-log_info "Creating plugin package..."
-TEMP_DIR=$(mktemp -d)
-mkdir -p "$TEMP_DIR/wp_temp_accounts"
+# Create and install dynamicui configuration directly
+log_info "Creating dynamicui configuration..."
+cat > /tmp/dynamicui_wp_temp_accounts.conf <<'EOF'
+version: 11.118
+wordpress_tools:
+  group:
+    desc: Tools for managing WordPress installations
+    icon: wp_temp_accounts/group_wordpress.svg
+    implements:
+      - group_software
+    name: WordPress Tools
+    order: 100
+wp_temp_accounts:
+  feature: wp_temp_accounts
+  group: wordpress_tools
+  desc: Create and manage temporary WordPress administrator accounts with automatic expiration
+  icon: wp_temp_accounts/wp_temp_accounts.svg
+  name: WordPress Temporary Accounts
+  order: 10000
+  searchtext: wordpress wp admin temporary temp user account access login administrator
+  target: _self
+  url: wp_temp_accounts/index.live.pl
+EOF
 
-# Copy install.json to root (required by install_plugin)
-cp cpanel/install.json "$TEMP_DIR/install.json"
-
-# Copy all necessary files to plugin directory
-cp cpanel/index.live.pl "$TEMP_DIR/wp_temp_accounts/"
-cp cpanel/group_wordpress.svg "$TEMP_DIR/wp_temp_accounts/"
-cp cpanel/wp_temp_accounts.svg "$TEMP_DIR/wp_temp_accounts/"
-
-# Create the tar file with the correct structure
-cd "$TEMP_DIR"
-tar -czf wp_temp_accounts.tar.gz install.json wp_temp_accounts/
-cd - >/dev/null
-
-# Install plugin using official install_plugin script for both themes
-log_info "Registering cPanel plugin with install_plugin..."
-if /usr/local/cpanel/scripts/install_plugin "$TEMP_DIR/wp_temp_accounts.tar.gz" --theme jupiter; then
-    log_info "Jupiter theme plugin installed successfully"
-else
-    log_warn "Jupiter theme plugin installation had issues"
-fi
-
-if /usr/local/cpanel/scripts/install_plugin "$TEMP_DIR/wp_temp_accounts.tar.gz" --theme paper_lantern; then
-    log_info "Paper Lantern theme plugin installed successfully"
-else
-    log_warn "Paper Lantern theme plugin installation had issues"
-fi
-
-rm -rf "$TEMP_DIR"
+# Install dynamicui configuration for both themes
+for theme in jupiter paper_lantern; do
+    if [ -d "/usr/local/cpanel/base/frontend/$theme" ]; then
+        log_info "Installing dynamicui config for $theme..."
+        install -m 644 /tmp/dynamicui_wp_temp_accounts.conf /usr/local/cpanel/base/frontend/$theme/dynamicui/
+    fi
+done
+rm -f /tmp/dynamicui_wp_temp_accounts.conf
 
 # Clear cPanel UI caches
 log_info "Clearing cPanel caches..."
 rm -f /usr/local/cpanel/base/frontend/jupiter/.cpanelcache/* 2>/dev/null || true
 rm -f /usr/local/cpanel/base/frontend/paper_lantern/.cpanelcache/* 2>/dev/null || true
-
-# Remove any old dynamicui configurations from previous attempts
-log_info "Cleaning up old configurations..."
-rm -f /usr/local/cpanel/base/frontend/jupiter/dynamicui/dynamicui_wp_temp_accounts.conf 2>/dev/null || true
-rm -f /usr/local/cpanel/base/frontend/jupiter/dynamicui/dynamicui_wptemp*.conf 2>/dev/null || true
-rm -f /usr/local/cpanel/base/frontend/jupiter/wp_temp_accounts/install.json 2>/dev/null || true
 
 log_info "cPanel plugin registered successfully"
 
@@ -270,20 +272,59 @@ echo "  • Cleanup log: /var/log/wp_temp_accounts/cleanup.log"
 echo "  • cPanel log: /var/log/wp_temp_accounts/cpanel.log"
 echo ""
 echo "======================================"
-echo "IMPORTANT - Verification Steps:"
+echo -e "${GREEN}Verification${NC}"
+echo "======================================"
+
+# Verify cPanel installation
+CPANEL_SUCCESS=true
+if [ -f "/usr/local/cpanel/base/frontend/jupiter/dynamicui/dynamicui_wp_temp_accounts.conf" ]; then
+    echo -e "${GREEN}✓${NC} cPanel dynamicui config installed"
+else
+    echo -e "${RED}✗${NC} cPanel dynamicui config NOT found"
+    CPANEL_SUCCESS=false
+fi
+
+if [ -f "/usr/local/cpanel/base/frontend/jupiter/wp_temp_accounts/index.live.pl" ]; then
+    echo -e "${GREEN}✓${NC} cPanel plugin files installed"
+else
+    echo -e "${RED}✗${NC} cPanel plugin files NOT found"
+    CPANEL_SUCCESS=false
+fi
+
+if [ -f "/usr/local/cpanel/base/frontend/jupiter/wp_temp_accounts/wp_temp_accounts.svg" ]; then
+    echo -e "${GREEN}✓${NC} cPanel icons installed"
+else
+    echo -e "${RED}✗${NC} cPanel icons NOT found"
+    CPANEL_SUCCESS=false
+fi
+
+# Verify WHM installation
+if [ -f "/usr/local/cpanel/whostmgr/docroot/cgi/wp_temp_accounts/wp_temp_accounts.cgi" ]; then
+    echo -e "${GREEN}✓${NC} WHM plugin installed"
+else
+    echo -e "${RED}✗${NC} WHM plugin NOT found"
+fi
+
+echo ""
+echo "======================================"
+echo "IMPORTANT - Next Steps:"
 echo "======================================"
 echo ""
-echo "The cPanel URL should be:"
-echo "  ✓ https://yourserver:2083/frontend/jupiter/wp_temp_accounts/index.live.pl"
-echo "  ✗ NOT: .../wp_temp_accounts/index.live.cgi (direct CGI access)"
-echo "  ✗ NOT: .../wp_temp_accounts/index.html.tt (template file)"
+if [ "$CPANEL_SUCCESS" = true ]; then
+    echo -e "${GREEN}cPanel Plugin is ready!${NC}"
+    echo ""
+    echo "To access the plugin:"
+    echo "  1. Log out of cPanel completely"
+    echo "  2. Clear browser cache (Ctrl+Shift+Del)"
+    echo "  3. Log back into cPanel"
+    echo "  4. Look in Software section for 'WordPress Tools'"
+    echo "  5. Click 'WordPress Temporary Accounts'"
+else
+    echo -e "${RED}cPanel Plugin installation may have issues.${NC}"
+    echo "Please check the errors above and try reinstalling."
+fi
 echo ""
-echo "To access the plugin:"
-echo "  1. Log out of cPanel completely"
-echo "  2. Clear browser cache (Ctrl+Shift+Del)"
-echo "  3. Log back into cPanel"
-echo "  4. Look for 'WordPress Tools' → 'WordPress Temporary Accounts'"
-echo ""
-echo "To verify installation:"
-echo "  ls -la /usr/local/cpanel/base/frontend/jupiter/wp_temp_accounts/"
+echo "Direct URLs:"
+echo "  WHM: https://yourserver:2087/cgi/wp_temp_accounts/wp_temp_accounts.cgi"
+echo "  cPanel: https://yourserver:2083/frontend/jupiter/wp_temp_accounts/index.live.pl"
 echo ""
