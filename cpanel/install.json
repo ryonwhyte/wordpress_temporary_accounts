@@ -15,9 +15,8 @@
         "description": "Create and manage temporary WordPress administrator accounts with automatic expiration",
         "order": 1,
         "icon": "wp_temp_accounts/wp_temp_accounts.svg",
-        "uri": "wp_temp_accounts/index.html.tt",
-        "file": "wp_temp_accounts/index.html.tt",
-        "feature": "wp_temp_accounts",
-        "searchKeywords": "wordpress wp admin temporary temp user account access login administrator"
+        "uri": "wp_temp_accounts/index.live.cgi",
+        "target": "_self",
+        "feature": "wp_temp_accounts"
     }
 ]
