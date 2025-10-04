@@ -389,7 +389,7 @@
         showLoading();
         try {
             // Use cPanel's 3rdparty path for CGI execution
-            const url = '[% USE Cpanel; Cpanel.find_file_url('/3rdparty/wp_temp_accounts/index.live.cgi') %]';
+            const url = '{{BACKEND_URL}}';
             const response = await fetch(url, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
