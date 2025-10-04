@@ -71,8 +71,10 @@ log_info "Installing cPanel plugin files..."
 log_info "Cleaning up old dynamicui configurations..."
 rm -f /usr/local/cpanel/base/frontend/jupiter/dynamicui/dynamicui_wp_temp_accounts.conf 2>/dev/null || true
 rm -f /usr/local/cpanel/base/frontend/jupiter/dynamicui/dynamicui_wptemp*.conf 2>/dev/null || true
+rm -f /usr/local/cpanel/base/frontend/jupiter/dynamicui/dynamicui_group_wordpress_tools.conf 2>/dev/null || true
 rm -f /usr/local/cpanel/base/frontend/paper_lantern/dynamicui/dynamicui_wp_temp_accounts.conf 2>/dev/null || true
 rm -f /usr/local/cpanel/base/frontend/paper_lantern/dynamicui/dynamicui_wptemp*.conf 2>/dev/null || true
+rm -f /usr/local/cpanel/base/frontend/paper_lantern/dynamicui/dynamicui_group_wordpress_tools.conf 2>/dev/null || true
 
 # Create plugin directories for both themes
 mkdir -p /usr/local/cpanel/base/frontend/jupiter/wp_temp_accounts

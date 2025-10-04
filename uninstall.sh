@@ -75,8 +75,10 @@ rm -rf /usr/local/cpanel/base/3rdparty/wp_temp_accounts
 log_info "Removing from dynamicui registry..."
 rm -f /usr/local/cpanel/base/frontend/jupiter/dynamicui/dynamicui_wp_temp_accounts.conf
 rm -f /usr/local/cpanel/base/frontend/jupiter/dynamicui/dynamicui_wptemp*.conf
+rm -f /usr/local/cpanel/base/frontend/jupiter/dynamicui/dynamicui_group_wordpress_tools.conf
 rm -f /usr/local/cpanel/base/frontend/paper_lantern/dynamicui/dynamicui_wp_temp_accounts.conf
 rm -f /usr/local/cpanel/base/frontend/paper_lantern/dynamicui/dynamicui_wptemp*.conf
+rm -f /usr/local/cpanel/base/frontend/paper_lantern/dynamicui/dynamicui_group_wordpress_tools.conf
 rm -f /usr/local/cpanel/base/frontend/jupiter/dynamicui/dynamicui_wp_temp_accounts.yaml
 rm -f /usr/local/cpanel/base/frontend/jupiter/config/dynamicui_local.yaml
 grep -l "wp_temp_accounts\|wordpress_tools" /usr/local/cpanel/base/frontend/jupiter/dynamicui/* 2>/dev/null | xargs rm -f 2>/dev/null || true

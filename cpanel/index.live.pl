@@ -22,7 +22,7 @@ if (-e $template_file) {
         # Simple template variable replacement
         $line =~ s/\{\{CPANEL_USER\}\}/$ENV{'REMOTE_USER'} || 'unknown'/ge;
         $line =~ s/\{\{CPANEL_THEME\}\}/$theme/ge;
-        $line =~ s/\{\{BACKEND_URL\}\}/\/3rdparty\/wp_temp_accounts\/index.live.cgi/ge;
+        $line =~ s/\{\{BACKEND_URL\}\}/..\/3rdparty\/wp_temp_accounts\/index.live.cgi/ge;
         print $line;
     }
     close($fh);
