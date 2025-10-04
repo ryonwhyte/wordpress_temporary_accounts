@@ -67,7 +67,29 @@ install -m 644 whm/wp_temp_accounts.tmpl /usr/local/cpanel/whostmgr/docroot/temp
 # Install cPanel plugin
 log_info "Installing cPanel plugin files..."
 
-# Clean up any old dynamicui configurations first
+# Function to clear all caches
+clear_all_caches() {
+    log_info "Clearing all cPanel caches..."
+
+    # Clear system-level caches
+    rm -rf /usr/local/cpanel/base/frontend/jupiter/.cpanelcache/* 2>/dev/null || true
+    rm -rf /usr/local/cpanel/base/frontend/paper_lantern/.cpanelcache/* 2>/dev/null || true
+
+    # Clear user-level caches for ALL users
+    for userdir in /home/*; do
+        if [ -d "$userdir/.cpanel/caches" ]; then
+            rm -rf "$userdir/.cpanel/caches/dynamicui/"* 2>/dev/null || true
+        fi
+    done
+
+    # Clear root user cache
+    rm -rf /root/.cpanel/caches/dynamicui/* 2>/dev/null || true
+}
+
+# Clear caches BEFORE installation
+clear_all_caches
+
+# Clean up any old dynamicui configurations
 log_info "Cleaning up old dynamicui configurations..."
 rm -f /usr/local/cpanel/base/frontend/jupiter/dynamicui/dynamicui_wp_temp_accounts.conf 2>/dev/null || true
 rm -f /usr/local/cpanel/base/frontend/jupiter/dynamicui/dynamicui_wptemp*.conf 2>/dev/null || true
@@ -121,46 +143,50 @@ cd - >/dev/null
 
 # Install using official script for both themes
 log_info "Installing cPanel plugin using install_plugin..."
-if /usr/local/cpanel/scripts/install_plugin "$TEMP_DIR/wp_temp_accounts.tar.gz" --theme jupiter; then
-    log_info "Jupiter theme plugin installed successfully"
-else
-    log_warn "Jupiter theme plugin installation had issues - creating dynamicui manually"
-
-    # Fallback: Create dynamicui configuration manually if install_plugin fails
-    log_info "Creating dynamicui configuration manually..."
-    cat > /usr/local/cpanel/base/frontend/jupiter/dynamicui/dynamicui_wp_temp_accounts.conf <<'EOF'
----
-wp_temp_accounts:
-  name: "WordPress Temporary Accounts"
-  desc: "Create and manage temporary WordPress administrator accounts with automatic expiration"
-  group: "software"
-  icon: "wp_temp_accounts/wp_temp_accounts.svg"
-  url: "wp_temp_accounts/index.live.pl"
-  order: 1000
-  target: "_self"
-  searchtext: "wordpress wp admin temporary temp user account access login administrator"
-EOF
-    chmod 644 /usr/local/cpanel/base/frontend/jupiter/dynamicui/dynamicui_wp_temp_accounts.conf
-fi
+/usr/local/cpanel/scripts/install_plugin "$TEMP_DIR/wp_temp_accounts.tar.gz" --theme jupiter 2>/dev/null || true
 
 if [ -d "/usr/local/cpanel/base/frontend/paper_lantern" ]; then
-    if /usr/local/cpanel/scripts/install_plugin "$TEMP_DIR/wp_temp_accounts.tar.gz" --theme paper_lantern; then
-        log_info "Paper Lantern theme plugin installed successfully"
-    else
-        log_warn "Paper Lantern theme plugin installation had issues"
-        if [ -d "/usr/local/cpanel/base/frontend/paper_lantern/dynamicui" ]; then
-            cp /usr/local/cpanel/base/frontend/jupiter/dynamicui/dynamicui_wp_temp_accounts.conf \
-               /usr/local/cpanel/base/frontend/paper_lantern/dynamicui/ 2>/dev/null || true
-        fi
-    fi
+    /usr/local/cpanel/scripts/install_plugin "$TEMP_DIR/wp_temp_accounts.tar.gz" --theme paper_lantern 2>/dev/null || true
 fi
 
 rm -rf "$TEMP_DIR"
 
-# Clear cPanel UI caches
-log_info "Clearing cPanel caches..."
-rm -f /usr/local/cpanel/base/frontend/jupiter/.cpanelcache/* 2>/dev/null || true
-rm -f /usr/local/cpanel/base/frontend/paper_lantern/.cpanelcache/* 2>/dev/null || true
+# ALWAYS create dynamicui configuration manually (legacy format for better compatibility)
+log_info "Creating dynamicui configuration (legacy format)..."
+
+for theme in jupiter paper_lantern; do
+    if [ -d "/usr/local/cpanel/base/frontend/$theme/dynamicui" ]; then
+        cat > "/usr/local/cpanel/base/frontend/$theme/dynamicui/dynamicui_wp_temp_accounts.conf" <<'EOF'
+description=Create and manage temporary WordPress administrator accounts with automatic expiration
+feature=>
+file=wp_temp_accounts/index.live.pl
+group=software
+height=48
+icon=wp_temp_accounts/wp_temp_accounts.svg
+itemdesc=WordPress Temporary Accounts
+itemorder=1000
+subtype=img
+target=_self
+type=image
+url=wp_temp_accounts/index.live.pl
+width=48
+searchtext=wordpress wp admin temporary temp user account access login administrator
+EOF
+        chmod 644 "/usr/local/cpanel/base/frontend/$theme/dynamicui/dynamicui_wp_temp_accounts.conf"
+        log_info "Created dynamicui config for $theme"
+    fi
+done
+
+# Clear all caches AFTER installation
+clear_all_caches
+
+# Rebuild sprites
+log_info "Rebuilding sprites..."
+/usr/local/cpanel/bin/rebuild_sprites 2>/dev/null || true
+
+# Hard restart cPanel
+log_info "Restarting cPanel service (hard restart)..."
+/scripts/restartsrv_cpsrvd --hard
 
 log_info "cPanel plugin registered successfully"
 
@@ -265,16 +291,7 @@ log_info "Setting up cron job..."
 CRON_JOB="0 * * * * /usr/local/cpanel/scripts/wp_temp_accounts_cleanup >/dev/null 2>&1"
 (crontab -l 2>/dev/null | grep -v "wp_temp_accounts_cleanup"; echo "$CRON_JOB") | crontab -
 
-# Clear caches and restart services
-log_info "Clearing template cache..."
-rm -f /usr/local/cpanel/base/frontend/jupiter/.cpanelcache/* 2>/dev/null || true
-rm -f /usr/local/cpanel/whostmgr/.cpanelcache/* 2>/dev/null || true
-
-log_info "Restarting cpsrvd..."
-/scripts/restartsrv_cpsrvd --hard
-
-log_info "Rebuilding WHM session cache..."
-/usr/local/cpanel/bin/rebuild_sprites 2>/dev/null || true
+# Note: Cache clearing, sprite rebuilding, and cpsrvd restart already done above for cPanel
 
 echo ""
 echo "======================================"
