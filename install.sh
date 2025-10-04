@@ -104,25 +104,25 @@ done
 # Create and install dynamicui configuration directly
 log_info "Creating dynamicui configuration..."
 cat > /tmp/dynamicui_wp_temp_accounts.conf <<'EOF'
-version: 11.118
+---
 wordpress_tools:
   group:
-    desc: Tools for managing WordPress installations
-    icon: wp_temp_accounts/group_wordpress.svg
-    implements:
-      - group_software
-    name: WordPress Tools
+    name: "WordPress Tools"
+    desc: "Tools for managing WordPress installations"
+    icon: "wp_temp_accounts/group_wordpress.svg"
     order: 100
+    implements:
+      - "group_software"
 wp_temp_accounts:
-  feature: wp_temp_accounts
-  group: wordpress_tools
-  desc: Create and manage temporary WordPress administrator accounts with automatic expiration
-  icon: wp_temp_accounts/wp_temp_accounts.svg
-  name: WordPress Temporary Accounts
+  name: "WordPress Temporary Accounts"
+  desc: "Create and manage temporary WordPress administrator accounts with automatic expiration"
+  group: "wordpress_tools"
+  feature: "wp_temp_accounts"
+  icon: "wp_temp_accounts/wp_temp_accounts.svg"
+  url: "wp_temp_accounts/index.live.pl"
   order: 10000
-  searchtext: wordpress wp admin temporary temp user account access login administrator
-  target: _self
-  url: wp_temp_accounts/index.live.pl
+  target: "_self"
+  searchtext: "wordpress wp admin temporary temp user account access login administrator"
 EOF
 
 # Install dynamicui configuration for both themes
