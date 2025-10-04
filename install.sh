@@ -67,22 +67,28 @@ install -m 644 whm/wp_temp_accounts.tmpl /usr/local/cpanel/whostmgr/docroot/temp
 # Install cPanel plugin (Template Toolkit method)
 log_info "Installing cPanel plugin..."
 
-# Create plugin directories
+# Create plugin directories for both themes
 mkdir -p /usr/local/cpanel/base/frontend/jupiter/wp_temp_accounts
+mkdir -p /usr/local/cpanel/base/frontend/paper_lantern/wp_temp_accounts
 mkdir -p /usr/local/cpanel/base/3rdparty/wp_temp_accounts
 
 # Install CGI script to 3rdparty directory (for execution)
 install -m 755 cpanel/index.live.cgi /usr/local/cpanel/base/3rdparty/wp_temp_accounts/
 
-# Install template and assets to frontend directory
-install -m 644 cpanel/index.html.tt /usr/local/cpanel/base/frontend/jupiter/wp_temp_accounts/
+# Install to both Jupiter and Paper Lantern themes
+for theme in jupiter paper_lantern; do
+    log_info "Installing for $theme theme..."
 
-# Install icons
-install -m 644 cpanel/group_wordpress.svg /usr/local/cpanel/base/frontend/jupiter/wp_temp_accounts/
-install -m 644 cpanel/wp_temp_accounts.svg /usr/local/cpanel/base/frontend/jupiter/wp_temp_accounts/
+    # Install template and assets to frontend directory
+    install -m 644 cpanel/index.html.tt /usr/local/cpanel/base/frontend/$theme/wp_temp_accounts/
 
-# Install install.json for dynamicui
-install -m 644 cpanel/install.json /usr/local/cpanel/base/frontend/jupiter/wp_temp_accounts/
+    # Install icons
+    install -m 644 cpanel/group_wordpress.svg /usr/local/cpanel/base/frontend/$theme/wp_temp_accounts/
+    install -m 644 cpanel/wp_temp_accounts.svg /usr/local/cpanel/base/frontend/$theme/wp_temp_accounts/
+
+    # Install install.json for dynamicui
+    install -m 644 cpanel/install.json /usr/local/cpanel/base/frontend/$theme/wp_temp_accounts/
+done
 
 # Create plugin tarball for install_plugin script
 log_info "Creating plugin package..."
@@ -95,14 +101,16 @@ cp cpanel/*.svg "$TEMP_DIR/wp_temp_accounts/"
 # Create the tar file with the correct structure
 tar -czf "$TEMP_DIR/wp_temp_accounts.tar.gz" -C "$TEMP_DIR" install.json wp_temp_accounts
 
-# Install plugin using official install_plugin script
+# Install plugin using official install_plugin script for both themes
 log_info "Registering cPanel plugin with install_plugin..."
 /usr/local/cpanel/scripts/install_plugin "$TEMP_DIR/wp_temp_accounts.tar.gz" --theme jupiter
+/usr/local/cpanel/scripts/install_plugin "$TEMP_DIR/wp_temp_accounts.tar.gz" --theme paper_lantern
 rm -rf "$TEMP_DIR"
 
 # Clear cPanel UI caches
 log_info "Clearing cPanel caches..."
 rm -f /usr/local/cpanel/base/frontend/jupiter/.cpanelcache/* 2>/dev/null || true
+rm -f /usr/local/cpanel/base/frontend/paper_lantern/.cpanelcache/* 2>/dev/null || true
 
 # Remove any old dynamicui configurations from previous attempts
 log_info "Cleaning up old configurations..."
@@ -189,7 +197,7 @@ chown -R root:root /usr/local/cpanel/whostmgr/docroot/cgi/wp_temp_accounts
 chown -R root:root /usr/local/cpanel/whostmgr/docroot/templates/wp_temp_accounts
 chown root:root /usr/local/cpanel/whostmgr/docroot/addon_plugins/wp_temp_accounts_icon.png
 chown -R root:root /usr/local/cpanel/base/frontend/jupiter/wp_temp_accounts
-chown -R root:root /usr/local/cpanel/base/frontend/paper_lantern/wp_temp_accounts 2>/dev/null || true
+chown -R root:root /usr/local/cpanel/base/frontend/paper_lantern/wp_temp_accounts
 chown root:root /var/log/wp_temp_accounts
 chmod 0750 /var/log/wp_temp_accounts
 chown root:root /var/cache/wp_temp_accounts
@@ -198,6 +206,10 @@ chmod 0750 /var/cache/wp_temp_accounts
 # Install cleanup script
 log_info "Installing cleanup script..."
 install -m 755 cleanup_expired.pl /usr/local/cpanel/scripts/wp_temp_accounts_cleanup
+
+# Install log rotation configuration
+log_info "Installing log rotation configuration..."
+install -m 644 logrotate.conf /etc/logrotate.d/wp_temp_accounts
 
 # Set up cron job for automatic cleanup (runs every hour)
 log_info "Setting up cron job..."

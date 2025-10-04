@@ -113,6 +113,10 @@ rm -rf /var/cache/wp_temp_accounts
 log_info "Removing cleanup script..."
 rm -f /usr/local/cpanel/scripts/wp_temp_accounts_cleanup
 
+# Remove log rotation configuration
+log_info "Removing log rotation configuration..."
+rm -f /etc/logrotate.d/wp_temp_accounts
+
 # Remove cron job
 log_info "Removing cron job..."
 crontab -l 2>/dev/null | grep -v "wp_temp_accounts_cleanup" | crontab - 2>/dev/null || true
