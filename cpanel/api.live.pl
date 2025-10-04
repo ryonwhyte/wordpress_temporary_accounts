@@ -6,9 +6,10 @@ if 0;
 use strict;
 use warnings;
 use lib '/usr/local/cpanel';
+use IPC::Open2;
 
-# This is a simple wrapper that executes the backend CGI with proper context
-# It ensures the session and authentication are properly passed through
+# This wrapper executes the backend CGI with proper context
+# It captures and forwards both the headers and body
 
 # Set up environment for the backend
 $ENV{'REQUEST_METHOD'} = 'POST';
@@ -21,9 +22,20 @@ while (read(STDIN, $buffer, 4096)) {
     $post_data .= $buffer;
 }
 
-# Execute the backend CGI
-open(my $cgi, '|-', '/usr/local/cpanel/base/3rdparty/wp_temp_accounts/index.live.cgi') or die "Cannot execute backend: $!";
-print $cgi $post_data;
-close($cgi);
+# Execute the backend CGI and capture its output
+my ($chld_out, $chld_in);
+my $pid = open2($chld_out, $chld_in, '/usr/local/cpanel/base/3rdparty/wp_temp_accounts/index.live.cgi');
+
+# Send POST data to backend
+print $chld_in $post_data;
+close($chld_in);
+
+# Read and forward the complete output from backend
+while (<$chld_out>) {
+    print $_;
+}
+close($chld_out);
+
+waitpid($pid, 0);
 
 1;

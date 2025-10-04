@@ -160,7 +160,7 @@ log_info "Creating dynamicui configuration (legacy format)..."
 for theme in jupiter paper_lantern; do
     if [ -d "/usr/local/cpanel/base/frontend/$theme/dynamicui" ]; then
         cat > "/usr/local/cpanel/base/frontend/$theme/dynamicui/dynamicui_wp_temp_accounts.conf" <<'EOF'
-description=>Create and manage temporary WordPress administrator accounts,feature=>,file=>wp_temp_accounts/index.live.pl,group=>software,height=>48,imgtype=>icon,itemdesc=>WordPress Temporary Accounts,itemorder=>1000,name=>WordPress Temporary Accounts,subtype=>img,target=>_self,type=>image,url=>wp_temp_accounts/index.live.pl,width=>48
+description=>WordPress Temporary Accounts,feature=>,file=>wp_temp_accounts,group=>domains,height=>48,imgtype=>icon,itemdesc=>WordPress Temporary Accounts,itemorder=>1000,subtype=>img,target=>_self,type=>image,url=>wp_temp_accounts/index.live.pl,width=>48
 EOF
         chmod 644 "/usr/local/cpanel/base/frontend/$theme/dynamicui/dynamicui_wp_temp_accounts.conf"
         log_info "Created dynamicui config for $theme"
