@@ -50,9 +50,9 @@ echo ""
 log_info "Unregistering from WHM..."
 /usr/local/cpanel/bin/unregister_appconfig wp_temp_accounts 2>/dev/null || true
 
-# Unregister from cPanel using proper method
-log_info "Unregistering from cPanel..."
-/usr/local/cpanel/bin/unregister_cpanelplugin wp_temp_accounts 2>/dev/null || true
+# Note: cPanel plugin removal is handled by removing files and dynamicui configs
+# The install_plugin method doesn't require explicit unregistration
+log_info "Removing cPanel plugin registration..."
 
 # Remove AppConfigs
 log_info "Removing AppConfigs..."

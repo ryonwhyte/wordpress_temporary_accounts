@@ -7,12 +7,13 @@
         "order": 100
     },
     {
-        "type": "app",
+        "type": "link",
         "id": "wp_temp_accounts",
         "group_id": "wordpress_tools",
         "name": "WordPress Temporary Accounts",
         "order": 1,
         "icon": "wp_temp_accounts/wp_temp_accounts.svg",
-        "uri": "wp_temp_accounts/index.tmpl"
+        "uri": "wp_temp_accounts/index.html.tt",
+        "file": "wp_temp_accounts/index.html.tt"
     }
 ]

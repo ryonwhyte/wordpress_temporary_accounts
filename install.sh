@@ -72,23 +72,33 @@ mkdir -p /usr/local/cpanel/base/frontend/jupiter/wp_temp_accounts
 mkdir -p /usr/local/cpanel/base/3rdparty/wp_temp_accounts
 
 # Install CGI script to 3rdparty directory (for execution)
-install -m 755 cpanel/index.cgi /usr/local/cpanel/base/3rdparty/wp_temp_accounts/
+install -m 755 cpanel/index.live.cgi /usr/local/cpanel/base/3rdparty/wp_temp_accounts/
 
 # Install template and assets to frontend directory
-install -m 644 cpanel/index.tmpl /usr/local/cpanel/base/frontend/jupiter/wp_temp_accounts/
+install -m 644 cpanel/index.html.tt /usr/local/cpanel/base/frontend/jupiter/wp_temp_accounts/
 
 # Install icons
 install -m 644 cpanel/group_wordpress.svg /usr/local/cpanel/base/frontend/jupiter/wp_temp_accounts/
 install -m 644 cpanel/wp_temp_accounts.svg /usr/local/cpanel/base/frontend/jupiter/wp_temp_accounts/
 
-# Install cPanel plugin descriptor
-log_info "Installing cPanel plugin descriptor..."
-install -m 644 packaging/wp_temp_accounts_cpanel.conf /var/cpanel/apps/wp_temp_accounts_cpanel.conf
+# Install install.json for dynamicui
+install -m 644 cpanel/install.json /usr/local/cpanel/base/frontend/jupiter/wp_temp_accounts/
 
-# Register cPanel plugin (proper method using register_cpanelplugin)
-log_info "Registering cPanel plugin..."
-/usr/local/cpanel/bin/unregister_cpanelplugin wp_temp_accounts 2>/dev/null || true
-/usr/local/cpanel/bin/register_cpanelplugin /var/cpanel/apps/wp_temp_accounts_cpanel.conf
+# Create plugin tarball for install_plugin script
+log_info "Creating plugin package..."
+TEMP_DIR=$(mktemp -d)
+mkdir -p "$TEMP_DIR/wp_temp_accounts"
+cp cpanel/install.json "$TEMP_DIR/install.json"  # install.json must be at root of tar
+cp cpanel/index.html.tt "$TEMP_DIR/wp_temp_accounts/"
+cp cpanel/*.svg "$TEMP_DIR/wp_temp_accounts/"
+
+# Create the tar file with the correct structure
+tar -czf "$TEMP_DIR/wp_temp_accounts.tar.gz" -C "$TEMP_DIR" install.json wp_temp_accounts
+
+# Install plugin using official install_plugin script
+log_info "Registering cPanel plugin with install_plugin..."
+/usr/local/cpanel/scripts/install_plugin "$TEMP_DIR/wp_temp_accounts.tar.gz" --theme jupiter
+rm -rf "$TEMP_DIR"
 
 # Clear cPanel UI caches
 log_info "Clearing cPanel caches..."

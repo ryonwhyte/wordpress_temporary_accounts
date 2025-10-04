@@ -1,16 +1,12 @@
-[%
-# cPanel Template for WordPress Temporary Accounts
-# Uses cPanel's template system for proper theme integration
-
-USE Cpanel;
-
-# Set page metadata
-SET CPANEL.CPVAR.headerimg = "wp_temp_accounts.svg";
-SET CPANEL.CPVAR.pagetitle = "WordPress Temporary Accounts";
-SET CPANEL.CPVAR.dprefix = "../";
-
-# Include cPanel header
-PROCESS '_assets/master_header.html.tt';
+[% WRAPPER '_assets/master.html.tt'
+    app_key = 'wp_temp_accounts'
+    page_title = 'WordPress Temporary Accounts'
+    include_legacy_stylesheets = 0
+    include_legacy_scripts = 0
+    include_cjt = 0
+    use_master_bootstrap = 0
+    page_stylesheets = []
+    page_scripts = []
 %]
 
 <style type="text/css">
@@ -393,7 +389,7 @@ PROCESS '_assets/master_header.html.tt';
         showLoading();
         try {
             // Use cPanel's 3rdparty path for CGI execution
-            const url = '[% Cpanel.find_file_url('/3rdparty/wp_temp_accounts/index.cgi') %]';
+            const url = '[% USE Cpanel; Cpanel.find_file_url('/3rdparty/wp_temp_accounts/index.live.cgi') %]';
             const response = await fetch(url, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -729,7 +725,4 @@ PROCESS '_assets/master_header.html.tt';
     });
 </script>
 
-[%
-# Include cPanel footer
-PROCESS '_assets/master_footer.html.tt';
-%]
+[% END %]
