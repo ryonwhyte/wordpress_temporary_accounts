@@ -9,8 +9,9 @@ use warnings;
 # Get the security token from environment
 my $token = $ENV{'cp_security_token'} // '';
 
-# Redirect to the Template Toolkit file
+# Redirect to the Template Toolkit file with absolute path
+# Use leading slash to make it absolute from the cPanel root
 print "Status: 302 Found\r\n";
-print "Location: ${token}/frontend/jupiter/wp_temp_accounts/index.html.tt\r\n\r\n";
+print "Location: /${token}/frontend/jupiter/wp_temp_accounts/index.html.tt\r\n\r\n";
 
 1;

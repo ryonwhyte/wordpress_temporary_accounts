@@ -14,9 +14,7 @@ use CGI();
 run() unless caller();
 
 sub run {
-    my $cgi = CGI->new();
     my $request_method = $ENV{REQUEST_METHOD} || 'GET';
-    my $mode = $cgi->param('mode') || '';
 
     # Get authenticated user
     my $cpanel_user = $ENV{REMOTE_USER} || '';
@@ -31,8 +29,17 @@ sub run {
 
     # Handle POST requests (API calls)
     if ($request_method eq 'POST') {
-        handle_api_request($cgi, $cpanel_user);
+        # Read POST data BEFORE creating CGI object
+        my $post_body = '';
+        if (!eof(STDIN)) {
+            local $/;
+            $post_body = <STDIN>;
+        }
+        handle_api_request_direct($cpanel_user, $post_body);
     } else {
+        # For GET requests, create CGI object
+        my $cgi = CGI->new();
+        my $mode = $cgi->param('mode') || '';
         # Handle GET requests (UI rendering)
         # If called with mode=iframe, output the full HTML interface
         if ($mode eq 'iframe') {
@@ -130,23 +137,10 @@ sub sanitize_log_input {
 # API Request Handler
 ###############################################################################
 
-sub handle_api_request {
-    my ($cgi, $cpanel_user) = @_;
+sub handle_api_request_direct {
+    my ($cpanel_user, $body) = @_;
 
-    # Read request body with size limit
-    my $body = '';
-
-    # Check if CGI.pm already read the body
-    my $postdata = $cgi->param('POSTDATA');
-    if (defined $postdata && $postdata ne '') {
-        $body = $postdata;
-    } else {
-        # Read from STDIN directly
-        my $content_length = $ENV{CONTENT_LENGTH} || 0;
-        if ($content_length > 0) {
-            read(STDIN, $body, $content_length);
-        }
-    }
+    # Body is passed directly from run()
 
     # Handle empty body
     unless ($body && $body ne '') {
