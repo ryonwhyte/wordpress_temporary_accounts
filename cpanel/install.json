@@ -15,7 +15,6 @@
         "type" : "link",
         "id" : "wp_temp_accounts",
         "uri" : "wp_temp_accounts/index.live.pl",
-        "feature": "wp_temp_accounts",
         "description": "Create and manage temporary WordPress administrator accounts with automatic expiration",
         "target" : "_self"
     }

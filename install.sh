@@ -117,7 +117,6 @@ wp_temp_accounts:
   name: "WordPress Temporary Accounts"
   desc: "Create and manage temporary WordPress administrator accounts with automatic expiration"
   group: "wordpress_tools"
-  feature: "wp_temp_accounts"
   icon: "wp_temp_accounts/wp_temp_accounts.svg"
   url: "wp_temp_accounts/index.live.pl"
   order: 10000
