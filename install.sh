@@ -81,56 +81,26 @@ install -m 644 cpanel/index.tmpl /usr/local/cpanel/base/frontend/jupiter/wp_temp
 install -m 644 cpanel/group_wordpress.svg /usr/local/cpanel/base/frontend/jupiter/wp_temp_accounts/
 install -m 644 cpanel/wp_temp_accounts.svg /usr/local/cpanel/base/frontend/jupiter/wp_temp_accounts/
 
-# Install install.json for dynamicui
-install -m 644 cpanel/install.json /usr/local/cpanel/base/frontend/jupiter/wp_temp_accounts/
+# Install cPanel plugin descriptor
+log_info "Installing cPanel plugin descriptor..."
+install -m 644 packaging/wp_temp_accounts_cpanel.conf /var/cpanel/apps/wp_temp_accounts_cpanel.conf
 
-# Create plugin tarball for install_plugin script with correct structure
-log_info "Creating plugin package..."
-TEMP_DIR=$(mktemp -d)
-
-# Create the plugin directory structure as required by install_plugin
-mkdir -p "$TEMP_DIR/wp_temp_accounts"
-cp cpanel/install.json "$TEMP_DIR/install.json"  # install.json must be at root of tar
-cp cpanel/index.tmpl "$TEMP_DIR/wp_temp_accounts/"
-cp cpanel/*.svg "$TEMP_DIR/wp_temp_accounts/"
-
-# Create the tar file with the correct structure (use -C to change directory)
-tar -czf "$TEMP_DIR/wp_temp_accounts.tar.gz" -C "$TEMP_DIR" install.json wp_temp_accounts
-
-# Install plugin using official install_plugin script
-if [ -x /usr/local/cpanel/scripts/install_plugin ]; then
-    log_info "Registering cPanel plugin with dynamicui..."
-    /usr/local/cpanel/scripts/install_plugin "$TEMP_DIR/wp_temp_accounts.tar.gz" --theme jupiter
-
-    # If install_plugin succeeded, we don't need the manual configuration
-    if [ $? -eq 0 ]; then
-        log_info "Plugin registered successfully via install_plugin"
-        rm -rf "$TEMP_DIR"
-    else
-        log_warn "install_plugin failed, using manual registration..."
-        rm -rf "$TEMP_DIR"
-
-        # Manual fallback will be handled below
-    fi
-else
-    log_info "install_plugin script not found, using manual dynamicui registration..."
-    rm -rf "$TEMP_DIR"
-fi
+# Register cPanel plugin (proper method using register_cpanelplugin)
+log_info "Registering cPanel plugin..."
+/usr/local/cpanel/bin/unregister_cpanelplugin wp_temp_accounts 2>/dev/null || true
+/usr/local/cpanel/bin/register_cpanelplugin /var/cpanel/apps/wp_temp_accounts_cpanel.conf
 
 # Clear cPanel UI caches
 log_info "Clearing cPanel caches..."
 rm -f /usr/local/cpanel/base/frontend/jupiter/.cpanelcache/* 2>/dev/null || true
 
-# Clean up any old cPanel AppConfig (from older versions)
-log_info "Cleaning up old AppConfig entries..."
-/usr/local/cpanel/bin/unregister_appconfig wp_temp_accounts_cpanel 2>/dev/null || true
-rm -f /var/cpanel/apps/wp_temp_accounts_cpanel.conf 2>/dev/null || true
-
-# Remove any old manual dynamicui configurations
+# Remove any old dynamicui configurations from previous attempts
+log_info "Cleaning up old configurations..."
 rm -f /usr/local/cpanel/base/frontend/jupiter/dynamicui/dynamicui_wp_temp_accounts.conf 2>/dev/null || true
 rm -f /usr/local/cpanel/base/frontend/jupiter/dynamicui/dynamicui_wptemp*.conf 2>/dev/null || true
+rm -f /usr/local/cpanel/base/frontend/jupiter/wp_temp_accounts/install.json 2>/dev/null || true
 
-log_info "cPanel plugin files installed"
+log_info "cPanel plugin registered successfully"
 
 # Register with WHM
 log_info "Registering with WHM..."

@@ -50,15 +50,9 @@ echo ""
 log_info "Unregistering from WHM..."
 /usr/local/cpanel/bin/unregister_appconfig wp_temp_accounts 2>/dev/null || true
 
-# Unregister from cPanel (both old AppConfig and new dynamicui methods)
+# Unregister from cPanel using proper method
 log_info "Unregistering from cPanel..."
-/usr/local/cpanel/bin/unregister_appconfig wp_temp_accounts_cpanel 2>/dev/null || true
-
-# Uninstall dynamicui plugin if installed
-if [ -x /usr/local/cpanel/scripts/uninstall_plugin ]; then
-    log_info "Removing dynamicui plugin registration..."
-    /usr/local/cpanel/scripts/uninstall_plugin wp_temp_accounts --theme jupiter 2>/dev/null || true
-fi
+/usr/local/cpanel/bin/unregister_cpanelplugin wp_temp_accounts 2>/dev/null || true
 
 # Remove AppConfigs
 log_info "Removing AppConfigs..."
