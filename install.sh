@@ -70,13 +70,20 @@ log_info "Installing cPanel plugin files..."
 # Create plugin directories for both themes
 mkdir -p /usr/local/cpanel/base/frontend/jupiter/wp_temp_accounts
 mkdir -p /usr/local/cpanel/base/frontend/paper_lantern/wp_temp_accounts
+mkdir -p /usr/local/cpanel/base/3rdparty/wp_temp_accounts
+
+# Install CGI backend to 3rdparty directory (for proper execution context)
+install -m 755 cpanel/index.live.cgi /usr/local/cpanel/base/3rdparty/wp_temp_accounts/
 
 # Install to both Jupiter and Paper Lantern themes
 for theme in jupiter paper_lantern; do
     log_info "Installing for $theme theme..."
 
-    # Install CGI script (must be in frontend directory for proper URI resolution)
-    install -m 755 cpanel/index.live.cgi /usr/local/cpanel/base/frontend/$theme/wp_temp_accounts/
+    # Install the live.pl wrapper script (entry point from dynamicui)
+    install -m 755 cpanel/index.live.pl /usr/local/cpanel/base/frontend/$theme/wp_temp_accounts/
+
+    # Install the HTML template
+    install -m 644 cpanel/index.html.tt /usr/local/cpanel/base/frontend/$theme/wp_temp_accounts/
 
     # Install icons
     install -m 644 cpanel/group_wordpress.svg /usr/local/cpanel/base/frontend/$theme/wp_temp_accounts/
@@ -91,7 +98,8 @@ mkdir -p "$TEMP_DIR/wp_temp_accounts"
 # Copy install.json to root (required by install_plugin)
 cp cpanel/install.json "$TEMP_DIR/install.json"
 
-# Copy icons to plugin directory (will be installed to frontend theme)
+# Copy all necessary files to plugin directory
+cp cpanel/index.live.pl "$TEMP_DIR/wp_temp_accounts/"
 cp cpanel/group_wordpress.svg "$TEMP_DIR/wp_temp_accounts/"
 cp cpanel/wp_temp_accounts.svg "$TEMP_DIR/wp_temp_accounts/"
 
@@ -207,9 +215,11 @@ chown -R root:root /usr/local/cpanel/whostmgr/docroot/templates/wp_temp_accounts
 chown root:root /usr/local/cpanel/whostmgr/docroot/addon_plugins/wp_temp_accounts_icon.png
 chown -R root:root /usr/local/cpanel/base/frontend/jupiter/wp_temp_accounts
 chown -R root:root /usr/local/cpanel/base/frontend/paper_lantern/wp_temp_accounts
-# Make CGI scripts executable
-chmod 755 /usr/local/cpanel/base/frontend/jupiter/wp_temp_accounts/index.live.cgi
-chmod 755 /usr/local/cpanel/base/frontend/paper_lantern/wp_temp_accounts/index.live.cgi
+chown -R root:root /usr/local/cpanel/base/3rdparty/wp_temp_accounts
+# Make scripts executable
+chmod 755 /usr/local/cpanel/base/frontend/jupiter/wp_temp_accounts/index.live.pl
+chmod 755 /usr/local/cpanel/base/frontend/paper_lantern/wp_temp_accounts/index.live.pl
+chmod 755 /usr/local/cpanel/base/3rdparty/wp_temp_accounts/index.live.cgi
 chown root:root /var/log/wp_temp_accounts
 chmod 0750 /var/log/wp_temp_accounts
 chown root:root /var/cache/wp_temp_accounts
@@ -264,8 +274,9 @@ echo "IMPORTANT - Verification Steps:"
 echo "======================================"
 echo ""
 echo "The cPanel URL should be:"
-echo "  ✓ https://yourserver:2083/frontend/jupiter/wp_temp_accounts/index.html.tt"
-echo "  ✗ NOT: .../wp_temp_accounts/index.tmpl (raw template = config error)"
+echo "  ✓ https://yourserver:2083/frontend/jupiter/wp_temp_accounts/index.live.pl"
+echo "  ✗ NOT: .../wp_temp_accounts/index.live.cgi (direct CGI access)"
+echo "  ✗ NOT: .../wp_temp_accounts/index.html.tt (template file)"
 echo ""
 echo "To access the plugin:"
 echo "  1. Log out of cPanel completely"
@@ -275,5 +286,4 @@ echo "  4. Look for 'WordPress Tools' → 'WordPress Temporary Accounts'"
 echo ""
 echo "To verify installation:"
 echo "  ls -la /usr/local/cpanel/base/frontend/jupiter/wp_temp_accounts/"
-echo "  ls -la /usr/local/cpanel/base/3rdparty/wp_temp_accounts/"
 echo ""

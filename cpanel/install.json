@@ -15,7 +15,7 @@
         "description": "Create and manage temporary WordPress administrator accounts with automatic expiration",
         "order": 1,
         "icon": "wp_temp_accounts/wp_temp_accounts.svg",
-        "uri": "wp_temp_accounts/index.live.cgi",
+        "uri": "wp_temp_accounts/index.live.pl",
         "target": "_self",
         "feature": "wp_temp_accounts"
     }
