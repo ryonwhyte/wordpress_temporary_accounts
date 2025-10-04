@@ -124,7 +124,23 @@ log_info "Installing cPanel plugin using install_plugin..."
 if /usr/local/cpanel/scripts/install_plugin "$TEMP_DIR/wp_temp_accounts.tar.gz" --theme jupiter; then
     log_info "Jupiter theme plugin installed successfully"
 else
-    log_warn "Jupiter theme plugin installation had issues"
+    log_warn "Jupiter theme plugin installation had issues - creating dynamicui manually"
+
+    # Fallback: Create dynamicui configuration manually if install_plugin fails
+    log_info "Creating dynamicui configuration manually..."
+    cat > /usr/local/cpanel/base/frontend/jupiter/dynamicui/dynamicui_wp_temp_accounts.conf <<'EOF'
+---
+wp_temp_accounts:
+  name: "WordPress Temporary Accounts"
+  desc: "Create and manage temporary WordPress administrator accounts with automatic expiration"
+  group: "software"
+  icon: "wp_temp_accounts/wp_temp_accounts.svg"
+  url: "wp_temp_accounts/index.live.pl"
+  order: 1000
+  target: "_self"
+  searchtext: "wordpress wp admin temporary temp user account access login administrator"
+EOF
+    chmod 644 /usr/local/cpanel/base/frontend/jupiter/dynamicui/dynamicui_wp_temp_accounts.conf
 fi
 
 if [ -d "/usr/local/cpanel/base/frontend/paper_lantern" ]; then
@@ -132,6 +148,10 @@ if [ -d "/usr/local/cpanel/base/frontend/paper_lantern" ]; then
         log_info "Paper Lantern theme plugin installed successfully"
     else
         log_warn "Paper Lantern theme plugin installation had issues"
+        if [ -d "/usr/local/cpanel/base/frontend/paper_lantern/dynamicui" ]; then
+            cp /usr/local/cpanel/base/frontend/jupiter/dynamicui/dynamicui_wp_temp_accounts.conf \
+               /usr/local/cpanel/base/frontend/paper_lantern/dynamicui/ 2>/dev/null || true
+        fi
     fi
 fi
 
