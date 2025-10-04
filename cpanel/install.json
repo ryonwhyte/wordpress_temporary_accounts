@@ -1,22 +1,22 @@
 [
     {
-        "type": "group",
-        "id": "wordpress_tools",
-        "name": "WordPress Tools",
-        "description": "Tools for managing WordPress installations",
-        "icon": "wp_temp_accounts/group_wordpress.svg",
-        "order": 100
+        "name" : "WordPress Tools",
+        "icon" : "group_wordpress.svg",
+        "order" : 100,
+        "type" : "group",
+        "id" : "wordpress_tools",
+        "implements" : "group_software"
     },
     {
-        "type": "link",
-        "id": "wp_temp_accounts",
-        "group_id": "wordpress_tools",
-        "name": "WordPress Temporary Accounts",
+        "icon" : "wp_temp_accounts.svg",
+        "group_id" : "wordpress_tools",
+        "order" : 10000,
+        "name" : "WordPress Temporary Accounts",
+        "type" : "link",
+        "id" : "wp_temp_accounts",
+        "uri" : "wp_temp_accounts/index.live.pl",
+        "feature": "wp_temp_accounts",
         "description": "Create and manage temporary WordPress administrator accounts with automatic expiration",
-        "order": 1,
-        "icon": "wp_temp_accounts/wp_temp_accounts.svg",
-        "uri": "wp_temp_accounts/index.live.pl",
-        "target": "_self",
-        "feature": "wp_temp_accounts"
+        "target" : "_self"
     }
 ]
