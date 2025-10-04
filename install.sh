@@ -101,37 +101,41 @@ for theme in jupiter paper_lantern; do
     install -m 644 cpanel/wp_temp_accounts.svg /usr/local/cpanel/base/frontend/$theme/wp_temp_accounts/
 done
 
-# Create and install dynamicui configuration directly
-log_info "Creating dynamicui configuration..."
-cat > /tmp/dynamicui_wp_temp_accounts.conf <<'EOF'
----
-wordpress_tools:
-  group:
-    name: "WordPress Tools"
-    desc: "Tools for managing WordPress installations"
-    icon: "wp_temp_accounts/group_wordpress.svg"
-    order: 100
-    implements:
-      - "group_software"
-wp_temp_accounts:
-  name: "WordPress Temporary Accounts"
-  desc: "Create and manage temporary WordPress administrator accounts with automatic expiration"
-  group: "wordpress_tools"
-  icon: "wp_temp_accounts/wp_temp_accounts.svg"
-  url: "wp_temp_accounts/index.live.pl"
-  order: 10000
-  target: "_self"
-  searchtext: "wordpress wp admin temporary temp user account access login administrator"
-EOF
+# Use install_plugin script to properly register the plugin
+log_info "Creating plugin package for install_plugin..."
+TEMP_DIR=$(mktemp -d)
+mkdir -p "$TEMP_DIR/wp_temp_accounts"
 
-# Install dynamicui configuration for both themes
-for theme in jupiter paper_lantern; do
-    if [ -d "/usr/local/cpanel/base/frontend/$theme" ]; then
-        log_info "Installing dynamicui config for $theme..."
-        install -m 644 /tmp/dynamicui_wp_temp_accounts.conf /usr/local/cpanel/base/frontend/$theme/dynamicui/
+# Copy install.json to root
+cp cpanel/install.json "$TEMP_DIR/install.json"
+
+# Copy plugin files
+cp cpanel/index.live.pl "$TEMP_DIR/wp_temp_accounts/"
+cp cpanel/index.html.tt "$TEMP_DIR/wp_temp_accounts/"
+cp cpanel/wp_temp_accounts.svg "$TEMP_DIR/wp_temp_accounts/"
+
+# Create tarball
+cd "$TEMP_DIR"
+tar -czf wp_temp_accounts.tar.gz install.json wp_temp_accounts/
+cd - >/dev/null
+
+# Install using official script for both themes
+log_info "Installing cPanel plugin using install_plugin..."
+if /usr/local/cpanel/scripts/install_plugin "$TEMP_DIR/wp_temp_accounts.tar.gz" --theme jupiter; then
+    log_info "Jupiter theme plugin installed successfully"
+else
+    log_warn "Jupiter theme plugin installation had issues"
+fi
+
+if [ -d "/usr/local/cpanel/base/frontend/paper_lantern" ]; then
+    if /usr/local/cpanel/scripts/install_plugin "$TEMP_DIR/wp_temp_accounts.tar.gz" --theme paper_lantern; then
+        log_info "Paper Lantern theme plugin installed successfully"
+    else
+        log_warn "Paper Lantern theme plugin installation had issues"
     fi
-done
-rm -f /tmp/dynamicui_wp_temp_accounts.conf
+fi
+
+rm -rf "$TEMP_DIR"
 
 # Clear cPanel UI caches
 log_info "Clearing cPanel caches..."
