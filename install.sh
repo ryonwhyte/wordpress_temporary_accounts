@@ -94,10 +94,8 @@ cp cpanel/install.json "$TEMP_DIR/install.json"  # install.json must be at root 
 cp cpanel/index.tmpl "$TEMP_DIR/wp_temp_accounts/"
 cp cpanel/*.svg "$TEMP_DIR/wp_temp_accounts/"
 
-# Create the tar file with the correct structure
-cd "$TEMP_DIR"
-tar czf wp_temp_accounts.tar.gz install.json wp_temp_accounts/
-cd - > /dev/null
+# Create the tar file with the correct structure (use -C to change directory)
+tar -czf "$TEMP_DIR/wp_temp_accounts.tar.gz" -C "$TEMP_DIR" install.json wp_temp_accounts
 
 # Install plugin using official install_plugin script
 if [ -x /usr/local/cpanel/scripts/install_plugin ]; then
@@ -256,4 +254,21 @@ echo ""
 echo "Logs:"
 echo "  • Cleanup log: /var/log/wp_temp_accounts/cleanup.log"
 echo "  • cPanel log: /var/log/wp_temp_accounts/cpanel.log"
+echo ""
+echo "======================================"
+echo "IMPORTANT - Verification Steps:"
+echo "======================================"
+echo ""
+echo "The cPanel URL should be:"
+echo "  ✓ https://yourserver:2083/frontend/jupiter/index.html?app=wp_temp_accounts"
+echo "  ✗ NOT: .../wp_temp_accounts/index.tmpl (raw template = config error)"
+echo ""
+echo "To access the plugin:"
+echo "  1. Log out of cPanel completely"
+echo "  2. Clear browser cache (Ctrl+Shift+Del)"
+echo "  3. Log back into cPanel"
+echo "  4. Look for 'WordPress Tools' → 'WordPress Temporary Accounts'"
+echo ""
+echo "To verify installation:"
+echo "  grep -R '\"id\": \"wp_temp_accounts\"' /usr/local/cpanel/base/frontend/jupiter -n"
 echo ""

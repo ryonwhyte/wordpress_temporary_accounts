@@ -1,18 +1,18 @@
 [
     {
+        "type": "group",
+        "id": "wordpress_tools",
         "name": "WordPress Tools",
         "icon": "wp_temp_accounts/group_wordpress.svg",
-        "order": 100,
-        "type": "group",
-        "id": "wordpress_tools"
+        "order": 100
     },
     {
-        "icon": "wp_temp_accounts/wp_temp_accounts.svg",
-        "group_id": "wordpress_tools",
-        "order": 1,
-        "name": "WordPress Temporary Accounts",
-        "type": "include",
+        "type": "app",
         "id": "wp_temp_accounts",
+        "group_id": "wordpress_tools",
+        "name": "WordPress Temporary Accounts",
+        "order": 1,
+        "icon": "wp_temp_accounts/wp_temp_accounts.svg",
         "uri": "wp_temp_accounts/index.tmpl"
     }
 ]
