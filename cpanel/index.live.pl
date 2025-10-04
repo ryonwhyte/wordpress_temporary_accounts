@@ -20,9 +20,12 @@ if (-e $template_file) {
     open(my $fh, '<', $template_file) or die "Cannot open template: $!";
     while (my $line = <$fh>) {
         # Simple template variable replacement
-        $line =~ s/\{\{CPANEL_USER\}\}/$ENV{'REMOTE_USER'} || 'unknown'/ge;
-        $line =~ s/\{\{CPANEL_THEME\}\}/$theme/ge;
-        $line =~ s/\{\{BACKEND_URL\}\}/..\/3rdparty\/wp_temp_accounts\/index.live.cgi/ge;
+        my $user = $ENV{'REMOTE_USER'} || 'unknown';
+        my $backend_url = '../3rdparty/wp_temp_accounts/index.live.cgi';
+
+        $line =~ s/\{\{CPANEL_USER\}\}/$user/g;
+        $line =~ s/\{\{CPANEL_THEME\}\}/$theme/g;
+        $line =~ s/\{\{BACKEND_URL\}\}/$backend_url/g;
         print $line;
     }
     close($fh);

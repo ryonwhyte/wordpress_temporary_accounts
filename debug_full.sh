@@ -51,7 +51,7 @@ cat /var/cpanel/apps/wp_temp_accounts.conf 2>/dev/null || echo "WHM AppConfig no
 echo -e "\n${GREEN}5. Checking for errors in logs:${NC}"
 echo "----------------------------------------"
 echo "Recent cPanel errors:"
-tail -10 /usr/local/cpanel/logs/error_log 2>/dev/null | grep -v "favicon" || echo "  No recent errors or cannot read log"
+tail -50 /usr/local/cpanel/logs/error_log 2>/dev/null | grep -v "favicon" || echo "  No recent errors or cannot read log"
 
 echo -e "\nAccess log entries:"
 grep "wp_temp_accounts" /usr/local/cpanel/logs/access_log 2>/dev/null | tail -5 || echo "  No access log entries found"
