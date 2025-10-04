@@ -115,6 +115,9 @@ for theme in jupiter paper_lantern; do
     # Install the live.pl wrapper script (entry point from dynamicui)
     install -m 755 cpanel/index.live.pl /usr/local/cpanel/base/frontend/$theme/wp_temp_accounts/
 
+    # Install the API wrapper CGI
+    install -m 755 cpanel/api.live.cgi /usr/local/cpanel/base/frontend/$theme/wp_temp_accounts/
+
     # Install the HTML template
     install -m 644 cpanel/index.html.tt /usr/local/cpanel/base/frontend/$theme/wp_temp_accounts/
 
@@ -133,6 +136,7 @@ cp cpanel/install.json "$TEMP_DIR/install.json"
 
 # Copy plugin files
 cp cpanel/index.live.pl "$TEMP_DIR/wp_temp_accounts/"
+cp cpanel/api.live.cgi "$TEMP_DIR/wp_temp_accounts/"
 cp cpanel/index.html.tt "$TEMP_DIR/wp_temp_accounts/"
 cp cpanel/wp_temp_accounts.svg "$TEMP_DIR/wp_temp_accounts/"
 
@@ -165,6 +169,7 @@ height=48
 icon=wp_temp_accounts/wp_temp_accounts.svg
 itemdesc=WordPress Temporary Accounts
 itemorder=1000
+name=WordPress Temporary Accounts
 subtype=img
 target=_self
 type=image
@@ -271,7 +276,9 @@ chown -R root:root /usr/local/cpanel/base/frontend/paper_lantern/wp_temp_account
 chown -R root:root /usr/local/cpanel/base/3rdparty/wp_temp_accounts
 # Make scripts executable
 chmod 755 /usr/local/cpanel/base/frontend/jupiter/wp_temp_accounts/index.live.pl
+chmod 755 /usr/local/cpanel/base/frontend/jupiter/wp_temp_accounts/api.live.cgi
 chmod 755 /usr/local/cpanel/base/frontend/paper_lantern/wp_temp_accounts/index.live.pl
+chmod 755 /usr/local/cpanel/base/frontend/paper_lantern/wp_temp_accounts/api.live.cgi 2>/dev/null || true
 chmod 755 /usr/local/cpanel/base/3rdparty/wp_temp_accounts/index.live.cgi
 chown root:root /var/log/wp_temp_accounts
 chmod 0750 /var/log/wp_temp_accounts
