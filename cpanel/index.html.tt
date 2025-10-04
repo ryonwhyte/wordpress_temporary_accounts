@@ -389,7 +389,7 @@
         showLoading();
         try {
             // Use the API wrapper endpoint
-            const url = '[% cp_security_token %]/3rdparty/wp_temp_accounts/index.live.cgi';
+            const url = '[% cp_security_token %]/frontend/jupiter/wp_temp_accounts/api.live.pl';
             const response = await fetch(url, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
