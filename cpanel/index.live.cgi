@@ -7,8 +7,6 @@ use strict;
 use warnings;
 use lib '/usr/local/cpanel';
 use Cpanel::JSON();
-use Cpanel::Template();
-use Cpanel::LiveAPI();
 use CGI();
 
 run() unless caller();
