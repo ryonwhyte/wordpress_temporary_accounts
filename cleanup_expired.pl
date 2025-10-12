@@ -80,7 +80,8 @@ sub cleanup_expired_users {
         # Check if expired
         if ($expires && $expires =~ /^\d+$/ && $expires < $current_time) {
             # Expired - attempt deletion from WordPress
-            my $cmd = qq{sudo -u $cpanel_user wp user delete "$username" --yes --path="$site_path" 2>&1};
+            # Note: Running as root via cron, so use --allow-root flag
+            my $cmd = qq{wp user delete "$username" --yes --allow-root --path="$site_path" 2>&1};
             my $output = `$cmd`;
 
             if ($? == 0) {

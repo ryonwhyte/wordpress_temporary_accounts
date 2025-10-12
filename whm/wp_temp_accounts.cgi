@@ -940,6 +940,7 @@ sub delete_temp_user {
 
     my $site_path = $payload->{site_path} || '';
     my $username = $payload->{username} || '';
+    my $cpanel_user = $payload->{cpanel_user} || '';
 
     unless ($site_path && $username) {
         print_json_error('missing_params', 'Missing required parameters');
@@ -948,20 +949,24 @@ sub delete_temp_user {
 
     my $cmd = qq{wp user delete "$username" --yes --allow-root --path="$site_path" 2>&1};
     my $output = `$cmd`;
+    my $exit_code = $?;
 
-    if ($? != 0) {
+    # Log the WP-CLI output for debugging
+    write_audit_log('DELETE_USER_ATTEMPT', "user=$username site=$site_path cmd=$cmd", "exit_code=$exit_code output=$output");
+
+    if ($exit_code != 0) {
         write_audit_log('DELETE_USER_FAILED', "user=$username site=$site_path", "error: $output");
         print_json_error('wp_cli_error', "Failed to delete user: $output");
         return;
     }
 
     # Remove from registry
-    remove_from_registry($payload->{cpanel_user}, $site_path, $username);
+    remove_from_registry($cpanel_user, $site_path, $username);
 
     # Log successful deletion
-    write_audit_log('DELETE_USER_SUCCESS', "user=$username site=$site_path", "success");
+    write_audit_log('DELETE_USER_SUCCESS', "user=$username site=$site_path", "output: $output");
 
-    print_json_success({ deleted => $username });
+    print_json_success({ deleted => $username, wp_cli_output => $output });
 }
 
 sub list_all_temp_users {

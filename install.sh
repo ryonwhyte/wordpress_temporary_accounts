@@ -264,22 +264,6 @@ chmod 0750 /var/log/wp_temp_accounts
 chown root:root /var/cache/wp_temp_accounts
 chmod 0750 /var/cache/wp_temp_accounts
 
-# Install sudoers configuration for WP-CLI access
-log_info "Installing sudoers configuration for WP-CLI..."
-if [ -f "packaging/wp_temp_accounts_sudoers" ]; then
-    install -m 0440 packaging/wp_temp_accounts_sudoers /etc/sudoers.d/wp_temp_accounts
-    # Validate sudoers file
-    visudo -c -f /etc/sudoers.d/wp_temp_accounts || {
-        log_error "Invalid sudoers file, removing..."
-        rm -f /etc/sudoers.d/wp_temp_accounts
-        exit 1
-    }
-    log_info "Sudoers configuration installed successfully"
-else
-    log_warn "packaging/wp_temp_accounts_sudoers not found, skipping sudo configuration"
-    log_warn "WARNING: Sudo access for WP-CLI may not work without this!"
-fi
-
 # Install cleanup script
 log_info "Installing cleanup script..."
 install -m 755 cleanup_expired.pl /usr/local/cpanel/scripts/wp_temp_accounts_cleanup

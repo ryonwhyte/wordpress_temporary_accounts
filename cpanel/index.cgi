@@ -906,8 +906,9 @@ sub create_temp_user {
     my $password = generate_password();
 
     # Create user with WP-CLI
+    # Note: Running as cPanel user directly (no sudo needed in cPanel context)
     my $expires = time() + ($days * 86400);
-    my $cmd = qq{sudo -u $cpanel_user wp user create "$username" "$email" --role=administrator --user_pass="$password" --path="$site_path" 2>&1};
+    my $cmd = qq{wp user create "$username" "$email" --role=administrator --user_pass="$password" --path="$site_path" 2>&1};
     my $output = `$cmd`;
 
     if ($? != 0) {
@@ -917,8 +918,8 @@ sub create_temp_user {
     }
 
     # Add expiration meta
-    `sudo -u $cpanel_user wp user meta update "$username" wp_temp_user 1 --path="$site_path"`;
-    `sudo -u $cpanel_user wp user meta update "$username" wp_temp_expires $expires --path="$site_path"`;
+    `wp user meta update "$username" wp_temp_user 1 --path="$site_path"`;
+    `wp user meta update "$username" wp_temp_expires $expires --path="$site_path"`;
 
     # Get site domain for registry
     my $site_domain = extract_domain_from_site_path($site_path, $cpanel_user);
@@ -954,7 +955,7 @@ sub list_temp_users {
     return [] unless $site_path =~ /^\Q$homedir\E\//;
 
     my @users;
-    my $cmd = qq{sudo -u $cpanel_user wp user list --role=administrator --path="$site_path" --format=json 2>&1};
+    my $cmd = qq{wp user list --role=administrator --path="$site_path" --format=json 2>&1};
     my $output = `$cmd`;
 
     if ($? == 0) {
@@ -962,11 +963,11 @@ sub list_temp_users {
 
         foreach my $user (@$all_users) {
             my $username = $user->{user_login};
-            my $is_temp = `sudo -u $cpanel_user wp user meta get "$username" wp_temp_user --path="$site_path" 2>&1`;
+            my $is_temp = `wp user meta get "$username" wp_temp_user --path="$site_path" 2>&1`;
             chomp $is_temp;
 
             if ($is_temp eq '1') {
-                my $expires = `sudo -u $cpanel_user wp user meta get "$username" wp_temp_expires --path="$site_path" 2>&1`;
+                my $expires = `wp user meta get "$username" wp_temp_expires --path="$site_path" 2>&1`;
                 chomp $expires;
 
                 push @users, {
@@ -999,7 +1000,8 @@ sub delete_temp_user {
         return;
     }
 
-    my $cmd = qq{sudo -u $cpanel_user wp user delete "$username" --yes --path="$site_path" 2>&1};
+    # Note: Running as cPanel user directly (no sudo needed in cPanel context)
+    my $cmd = qq{wp user delete "$username" --yes --path="$site_path" 2>&1};
     my $output = `$cmd`;
     my $exit_code = $?;
 

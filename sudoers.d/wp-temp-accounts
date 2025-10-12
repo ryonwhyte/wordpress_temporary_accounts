@@ -1,9 +1,0 @@
-# WordPress Temporary Accounts - WP-CLI Sudoers Configuration
-# This allows cPanel users to run WP-CLI commands on their own accounts
-
-# Allow all users to run WP-CLI as themselves
-# This is safe because users can only act on files they already own
-ALL ALL=(ALL) NOPASSWD: /usr/local/bin/wp user create *, /usr/local/bin/wp user delete *, /usr/local/bin/wp user list *, /usr/local/bin/wp user meta *
-
-# Alternative: If wp is in a different location, add both
-ALL ALL=(ALL) NOPASSWD: /usr/bin/wp user create *, /usr/bin/wp user delete *, /usr/bin/wp user list *, /usr/bin/wp user meta *
