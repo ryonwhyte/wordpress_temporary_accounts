@@ -1,3 +1,9 @@
+[%
+# Set directory prefix to parent directory to prevent hijacking cPanel navigation
+SET CPANEL.CPVAR.dprefix = "../";
+SET dprefix = CPANEL.CPVAR.dprefix;
+%]
+
 [% WRAPPER '_assets/master.html.tt'
     app_key = 'wp_temp_accounts'
     page_title = 'WordPress Temporary Accounts'
