@@ -611,22 +611,26 @@ HTML_END
             document.getElementById('password-modal').classList.remove('show');
         }
 
-        async function loadAllUsers() {
-            const users = await callAPI('list_all_temp_users');
-            const tbody = document.getElementById('users-table');
+        async function loadAllUsers(forceRefresh = false) {
+            try {
+                const users = await callAPI('list_all_temp_users');
+                const tbody = document.getElementById('users-table');
 
-            if (users.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="5">No temporary users found</td></tr>';
-            } else {
-                tbody.innerHTML = users.map(u => `
-                    <tr>
-                        <td>${u.site_domain}</td>
-                        <td>${u.username}</td>
-                        <td>${u.email}</td>
-                        <td>${u.expires}</td>
-                        <td><button class="btn btn-danger" onclick="deleteUser('${u.site_path}', '${u.username}')">Delete</button></td>
-                    </tr>
-                `).join('');
+                if (users.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="5">No temporary users found</td></tr>';
+                } else {
+                    tbody.innerHTML = users.map(u => `
+                        <tr>
+                            <td>${u.site_domain}</td>
+                            <td>${u.username}</td>
+                            <td>${u.email}</td>
+                            <td>${u.expires}</td>
+                            <td><button class="btn btn-danger" onclick="deleteUser('${u.site_path}', '${u.username}')">Delete</button></td>
+                        </tr>
+                    `).join('');
+                }
+            } catch (error) {
+                console.error('Failed to load users:', error);
             }
         }
 
@@ -918,8 +922,26 @@ sub create_temp_user {
     }
 
     # Add expiration meta
-    `wp user meta update "$username" wp_temp_user 1 --path="$site_path"`;
-    `wp user meta update "$username" wp_temp_expires $expires --path="$site_path"`;
+    my $meta1_output = `wp user meta update "$username" wp_temp_user 1 --path="$site_path" 2>&1`;
+    my $meta1_exit = $?;
+    my $meta2_output = `wp user meta update "$username" wp_temp_expires $expires --path="$site_path" 2>&1`;
+    my $meta2_exit = $?;
+
+    # Log metadata updates
+    write_audit_log($cpanel_user, 'META_UPDATE', "user=$username meta=wp_temp_user", "exit=$meta1_exit output=$meta1_output");
+    write_audit_log($cpanel_user, 'META_UPDATE', "user=$username meta=wp_temp_expires", "exit=$meta2_exit output=$meta2_output");
+
+    # Verify metadata was set (defensive check)
+    if ($meta1_exit != 0 || $meta2_exit != 0) {
+        write_audit_log($cpanel_user, 'META_UPDATE_WARNING', "user=$username", "One or more metadata updates may have failed");
+    }
+
+    # Verify by reading back the metadata
+    my $verify_temp = `wp user meta get "$username" wp_temp_user --path="$site_path" 2>&1`;
+    chomp $verify_temp;
+    my $verify_expires = `wp user meta get "$username" wp_temp_expires --path="$site_path" 2>&1`;
+    chomp $verify_expires;
+    write_audit_log($cpanel_user, 'META_VERIFY', "user=$username", "wp_temp_user=$verify_temp wp_temp_expires=$verify_expires");
 
     # Get site domain for registry
     my $site_domain = extract_domain_from_site_path($site_path, $cpanel_user);
