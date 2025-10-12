@@ -103,12 +103,13 @@ Fixed multiple issues preventing the cPanel plugin from appearing and functionin
    - Fixed icon reference in dynamicui config (`file=>wp_temp_accounts`)
 
 3. **JSON Parsing Errors** ("Child failed to make LIVEAPI connection")
-   - **Root cause**: Template Toolkit files (.tt) are automatically processed through LiveAPI
-   - **Solution**: Frontend now calls backend CGI directly via `/3rdparty/` path (bypasses Template processing)
+   - **Root cause**: Files with `.live.cgi` extension are automatically processed through cPanel's LiveAPI engine
+   - **Solution**: Renamed backend from `index.live.cgi` to `index.cgi` to avoid LiveAPI processing
+   - Added `X-No-SSI: 1` header to prevent SSI processing
    - Removed unused `Cpanel::LiveAPI` and `Cpanel::Template` modules from backend
    - Fixed POST data reading before CGI->new() consumes STDIN
    - Created `handle_api_request_direct()` for proper POST handling
-   - **Per cPanel docs**: CGI scripts in `/usr/local/cpanel/base/3rdparty/` are executed directly without Template processing
+   - **Key insight**: The `.live.cgi` extension triggers cPanel's LiveAPI parser, causing errors to be appended to output
 
 4. **URL Redirect Issues**
    - Fixed `index.live.pl` to use simple relative path redirect
@@ -117,9 +118,9 @@ Fixed multiple issues preventing the cPanel plugin from appearing and functionin
 ### Key Files Modified
 - `cpanel/install.json` - Uses "domains" group
 - `cpanel/index.live.pl` - Fixed redirect
-- `cpanel/index.live.cgi` - Removed unused modules, fixed POST handling
+- `cpanel/index.cgi` (renamed from index.live.cgi) - Removed unused modules, fixed POST handling, added X-No-SSI header
 - `cpanel/index.html.tt` - Calls backend directly via `/3rdparty/` path
-- `install.sh` - Updated dynamicui config format
+- `install.sh` - Updated dynamicui config format, uses index.cgi
 - Removed `cpanel/api.live.pl` - No longer needed
 
 ## Troubleshooting

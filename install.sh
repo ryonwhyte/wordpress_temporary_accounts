@@ -106,7 +106,7 @@ mkdir -p /usr/local/cpanel/base/frontend/jupiter/dynamicui
 mkdir -p /usr/local/cpanel/base/frontend/paper_lantern/dynamicui
 
 # Install CGI backend to 3rdparty directory (for proper execution context)
-install -m 755 cpanel/index.live.cgi /usr/local/cpanel/base/3rdparty/wp_temp_accounts/
+install -m 755 cpanel/index.cgi /usr/local/cpanel/base/3rdparty/wp_temp_accounts/
 
 # Install to both Jupiter and Paper Lantern themes
 for theme in jupiter paper_lantern; do
@@ -258,7 +258,7 @@ chown -R root:root /usr/local/cpanel/base/3rdparty/wp_temp_accounts
 # Make scripts executable
 chmod 755 /usr/local/cpanel/base/frontend/jupiter/wp_temp_accounts/index.live.pl
 chmod 755 /usr/local/cpanel/base/frontend/paper_lantern/wp_temp_accounts/index.live.pl 2>/dev/null || true
-chmod 755 /usr/local/cpanel/base/3rdparty/wp_temp_accounts/index.live.cgi
+chmod 755 /usr/local/cpanel/base/3rdparty/wp_temp_accounts/index.cgi
 chown root:root /var/log/wp_temp_accounts
 chmod 0750 /var/log/wp_temp_accounts
 chown root:root /var/cache/wp_temp_accounts
