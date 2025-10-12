@@ -1001,8 +1001,12 @@ sub delete_temp_user {
 
     my $cmd = qq{sudo -u $cpanel_user wp user delete "$username" --yes --path="$site_path" 2>&1};
     my $output = `$cmd`;
+    my $exit_code = $?;
 
-    if ($? != 0) {
+    # Log the WP-CLI output for debugging
+    write_audit_log($cpanel_user, 'DELETE_USER_ATTEMPT', "user=$username site=$site_path cmd=$cmd", "exit_code=$exit_code output=$output");
+
+    if ($exit_code != 0) {
         write_audit_log($cpanel_user, 'DELETE_USER_FAILED', "user=$username site=$site_path", "error: $output");
         print_json_error('wp_cli_error', "Failed to delete user: $output");
         return;
@@ -1012,9 +1016,9 @@ sub delete_temp_user {
     remove_from_registry($cpanel_user, $site_path, $username);
 
     # Log successful deletion
-    write_audit_log($cpanel_user, 'DELETE_USER_SUCCESS', "user=$username site=$site_path", "success");
+    write_audit_log($cpanel_user, 'DELETE_USER_SUCCESS', "user=$username site=$site_path", "output: $output");
 
-    print_json_success({ deleted => $username });
+    print_json_success({ deleted => $username, wp_cli_output => $output });
 }
 
 sub list_all_temp_users {
