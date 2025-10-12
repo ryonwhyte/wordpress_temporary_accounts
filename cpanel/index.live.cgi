@@ -1150,12 +1150,14 @@ sub generate_password {
 
 sub print_json_success {
     my ($data) = @_;
+    print "X-No-SSI: 1\r\n";
     print "Content-Type: application/json\r\n\r\n";
     print Cpanel::JSON::Dump({ ok => Cpanel::JSON::true, data => $data });
 }
 
 sub print_json_error {
     my ($code, $message) = @_;
+    print "X-No-SSI: 1\r\n";
     print "Content-Type: application/json\r\n\r\n";
     print Cpanel::JSON::Dump({
         ok => Cpanel::JSON::false,
