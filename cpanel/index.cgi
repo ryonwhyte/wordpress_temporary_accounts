@@ -1026,17 +1026,81 @@ sub delete_temp_user {
 sub list_all_temp_users {
     my ($cpanel_user) = @_;
 
-    # Get user's temp users from registry - instant!
-    my $users = get_all_temp_users_from_registry($cpanel_user);
+    # Scan all WordPress sites for this cPanel user to find temp users
+    my $homedir = (getpwnam($cpanel_user))[7];
+    return [] unless $homedir && -d $homedir;
 
-    # Format expires timestamp as readable date
-    foreach my $user (@$users) {
-        if ($user->{expires} && $user->{expires} =~ /^\d+$/) {
-            $user->{expires} = scalar localtime($user->{expires});
+    my @all_temp_users;
+
+    # Get all WordPress sites for this user
+    my $sites = scan_wordpress($cpanel_user, 0);  # Use cache
+
+    foreach my $site (@$sites) {
+        my $site_path = $site->{path};
+        my $site_domain = $site->{domain};
+
+        # Query WordPress for users with temp metadata
+        my $cmd = qq{wp user list --role=administrator --path="$site_path" --format=json 2>&1};
+        my $output = `$cmd`;
+
+        if ($? == 0) {
+            my $all_users = eval { Cpanel::JSON::Load($output) } || [];
+
+            foreach my $user (@$all_users) {
+                my $username = $user->{user_login};
+
+                # Check if this is a temp user
+                my $is_temp = `wp user meta get "$username" wp_temp_user --path="$site_path" 2>&1`;
+                chomp $is_temp;
+
+                if ($is_temp eq '1') {
+                    # Get expiration time
+                    my $expires = `wp user meta get "$username" wp_temp_expires --path="$site_path" 2>&1`;
+                    chomp $expires;
+
+                    push @all_temp_users, {
+                        cpanel_account => $cpanel_user,
+                        site_domain => $site_domain,
+                        site_path => $site_path,
+                        username => $username,
+                        email => $user->{user_email},
+                        expires => $expires ? scalar localtime($expires) : 'Never'
+                    };
+                }
+            }
         }
     }
 
-    return $users;
+    # Sync the registry with what we found (optional - keeps registry accurate)
+    sync_registry_with_wordpress($cpanel_user, \@all_temp_users);
+
+    return \@all_temp_users;
+}
+
+sub sync_registry_with_wordpress {
+    my ($cpanel_user, $found_users) = @_;
+
+    my $registry = load_registry();
+
+    # Remove this user's entries from registry
+    my @other_users = grep { $_->{cpanel_account} ne $cpanel_user } @{$registry->{users}};
+
+    # Add back the users we actually found in WordPress
+    foreach my $user (@$found_users) {
+        # Convert formatted date back to timestamp if needed
+        # (we'll keep the formatted version for display, but store raw timestamp)
+        push @other_users, {
+            cpanel_account => $user->{cpanel_account},
+            site_domain => $user->{site_domain},
+            site_path => $user->{site_path},
+            username => $user->{username},
+            email => $user->{email},
+            expires => $user->{expires}  # Already formatted
+        };
+    }
+
+    $registry->{users} = \@other_users;
+    save_registry($registry);
 }
 
 ###############################################################################

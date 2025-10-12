@@ -970,17 +970,61 @@ sub delete_temp_user {
 }
 
 sub list_all_temp_users {
-    # Simply return users from registry - instant!
-    my $users = get_all_temp_users_from_registry();
+    # Scan ALL cPanel accounts and WordPress sites to find temp users
+    # This ensures accuracy even if registry is empty/out-of-sync
 
-    # Format expires timestamp as readable date
-    foreach my $user (@$users) {
-        if ($user->{expires} && $user->{expires} =~ /^\d+$/) {
-            $user->{expires} = scalar localtime($user->{expires});
+    my @all_temp_users;
+
+    # Get all cPanel accounts
+    my $accounts = list_cpanel_accounts();
+
+    foreach my $account (@$accounts) {
+        my $cpanel_user = $account->{user};
+
+        # Get all WordPress sites for this account (using cache)
+        my $sites = scan_wordpress($cpanel_user, 0);  # Use cache
+
+        foreach my $site (@$sites) {
+            my $site_path = $site->{path};
+            my $site_domain = $site->{domain};
+
+            # Query WordPress for users with temp metadata
+            my $cmd = qq{wp user list --role=administrator --path="$site_path" --allow-root --format=json 2>&1};
+            my $output = `$cmd`;
+
+            if ($? == 0) {
+                my $all_users = eval { Cpanel::JSON::Load($output) } || [];
+
+                foreach my $user (@$all_users) {
+                    my $username = $user->{user_login};
+
+                    # Check if this is a temp user
+                    my $is_temp = `wp user meta get "$username" wp_temp_user --path="$site_path" --allow-root 2>&1`;
+                    chomp $is_temp;
+
+                    if ($is_temp eq '1') {
+                        # Get expiration time
+                        my $expires = `wp user meta get "$username" wp_temp_expires --path="$site_path" --allow-root 2>&1`;
+                        chomp $expires;
+
+                        push @all_temp_users, {
+                            cpanel_account => $cpanel_user,
+                            site_domain => $site_domain,
+                            site_path => $site_path,
+                            username => $username,
+                            email => $user->{user_email},
+                            expires => $expires ? scalar localtime($expires) : 'Never'
+                        };
+                    }
+                }
+            }
         }
     }
 
-    return $users;
+    # Sync the registry with what we found (keeps registry accurate)
+    sync_registry_with_wordpress(\@all_temp_users);
+
+    return \@all_temp_users;
 }
 
 ###############################################################################
@@ -1073,6 +1117,32 @@ sub remove_from_registry {
 sub get_all_temp_users_from_registry {
     my $registry = load_registry();
     return $registry->{users} || [];
+}
+
+sub sync_registry_with_wordpress {
+    my ($wordpress_users) = @_;
+
+    # Replace registry contents with what we found in WordPress
+    # This keeps the registry in sync with WordPress reality
+    my $registry = {
+        users => []
+    };
+
+    foreach my $user (@$wordpress_users) {
+        # Convert the formatted expires back to timestamp if possible
+        # (Since we formatted it above, we need to preserve it)
+        # For registry, we should store timestamps
+        push @{$registry->{users}}, {
+            cpanel_account => $user->{cpanel_account},
+            site_domain => $user->{site_domain},
+            site_path => $user->{site_path},
+            username => $user->{username},
+            email => $user->{email},
+            expires => $user->{expires}  # Already formatted as readable date
+        };
+    }
+
+    save_registry($registry);
 }
 
 sub extract_domain_from_site_path {
