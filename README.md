@@ -89,6 +89,39 @@ tail -f /var/log/wp_temp_accounts/cleanup.log
 - **WHM audit log**: `/var/log/wp_temp_accounts/whm.log`
 - **cPanel log**: `/var/log/wp_temp_accounts/cpanel.log`
 
+## Recent Fixes (2025-10-11)
+
+### cPanel Integration Issues Resolved
+Fixed multiple issues preventing the cPanel plugin from appearing and functioning correctly:
+
+1. **Menu Item Not Appearing**
+   - Changed from non-existent "software" group to "domains" group
+   - Fixed dynamicui config format (single-line, comma-separated)
+   - Corrected `file=>` parameter to use base name only
+
+2. **Icon Not Displaying**
+   - Fixed icon reference in dynamicui config (`file=>wp_temp_accounts`)
+
+3. **JSON Parsing Errors** ("Child failed to make LIVEAPI connection")
+   - **Root cause**: Template Toolkit files (.tt) are automatically processed through LiveAPI
+   - **Solution**: Frontend now calls backend CGI directly via `/3rdparty/` path (bypasses Template processing)
+   - Removed unused `Cpanel::LiveAPI` and `Cpanel::Template` modules from backend
+   - Fixed POST data reading before CGI->new() consumes STDIN
+   - Created `handle_api_request_direct()` for proper POST handling
+   - **Per cPanel docs**: CGI scripts in `/usr/local/cpanel/base/3rdparty/` are executed directly without Template processing
+
+4. **URL Redirect Issues**
+   - Fixed `index.live.pl` to use simple relative path redirect
+   - Prevents breaking cPanel URL structure
+
+### Key Files Modified
+- `cpanel/install.json` - Uses "domains" group
+- `cpanel/index.live.pl` - Fixed redirect
+- `cpanel/index.live.cgi` - Removed unused modules, fixed POST handling
+- `cpanel/index.html.tt` - Calls backend directly via `/3rdparty/` path
+- `install.sh` - Updated dynamicui config format
+- Removed `cpanel/api.live.pl` - No longer needed
+
 ## Troubleshooting
 
 ### Plugin not appearing in WHM
@@ -100,9 +133,15 @@ tail -f /var/log/wp_temp_accounts/cleanup.log
 
 ### Plugin not appearing in cPanel
 ```bash
-# Rebuild the cPanel dynamicui cache
-/usr/local/cpanel/scripts/install_plugin /usr/local/cpanel/base/frontend/jupiter/wp_temp_accounts.tar.gz --theme jupiter
+# Clear caches and reinstall
+rm -rf /usr/local/cpanel/base/frontend/jupiter/.cpanelcache/*
+rm -rf /home/*/.cpanel/caches/dynamicui/*
+/usr/local/cpanel/bin/rebuild_sprites
 /scripts/restartsrv_cpsrvd --hard
+
+# Or do a fresh install
+./uninstall.sh
+./install.sh
 ```
 
 ### Cleanup not running
