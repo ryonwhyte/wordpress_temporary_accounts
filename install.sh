@@ -259,8 +259,9 @@ chown -R root:root /usr/local/cpanel/base/3rdparty/wp_temp_accounts
 chmod 755 /usr/local/cpanel/base/frontend/jupiter/wp_temp_accounts/index.live.pl
 chmod 755 /usr/local/cpanel/base/frontend/paper_lantern/wp_temp_accounts/index.live.pl 2>/dev/null || true
 chmod 755 /usr/local/cpanel/base/3rdparty/wp_temp_accounts/index.cgi
+# Set log directory permissions to allow cPanel users to write their own log files
 chown root:root /var/log/wp_temp_accounts
-chmod 0750 /var/log/wp_temp_accounts
+chmod 0777 /var/log/wp_temp_accounts
 chown root:root /var/cache/wp_temp_accounts
 chmod 0750 /var/cache/wp_temp_accounts
 
@@ -297,7 +298,8 @@ echo "  • Automatic cleanup: Cron runs hourly to remove expired users"
 echo ""
 echo "Logs:"
 echo "  • Cleanup log: /var/log/wp_temp_accounts/cleanup.log"
-echo "  • cPanel log: /var/log/wp_temp_accounts/cpanel.log"
+echo "  • cPanel logs: /var/log/wp_temp_accounts/cpanel_<username>.log"
+echo "  • WHM log: /var/log/wp_temp_accounts/whm.log"
 echo ""
 echo "======================================"
 echo -e "${GREEN}Verification${NC}"

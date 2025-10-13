@@ -59,12 +59,16 @@ sub write_audit_log {
     my ($cpanel_user, $action, $details, $result) = @_;
 
     my $log_dir = '/var/log/wp_temp_accounts';
-    my $log_file = "$log_dir/cpanel.log";
 
-    # Ensure log directory exists
+    # Sanitize username for filename
+    my $safe_username = $cpanel_user;
+    $safe_username =~ s/[^a-zA-Z0-9_-]/_/g;
+
+    my $log_file = "$log_dir/cpanel_${safe_username}.log";
+
+    # Ensure log directory exists with world-writable permissions
     unless (-d $log_dir) {
-        mkdir($log_dir, 0750) or return;
-        chown 0, 0, $log_dir;
+        mkdir($log_dir, 0777) or return;
     }
 
     # Sanitize inputs for logging
@@ -79,10 +83,12 @@ sub write_audit_log {
     my $log_entry = sprintf("[%s] %s | %s | %s | %s | %s\n",
         $timestamp, $cpanel_user, $action, $details, $result, $remote_ip);
 
-    # Write to log file
+    # Write to log file (creates it if doesn't exist)
     if (open my $fh, '>>', $log_file) {
         print $fh $log_entry;
         close $fh;
+
+        # Set permissions so user can read/write their own log
         chmod 0640, $log_file;
     }
 }
