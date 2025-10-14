@@ -874,9 +874,32 @@ sub create_temp_user {
         return;
     }
 
-    # Add expiration meta
-    `wp user meta update "$username" wp_temp_user 1 --allow-root --path="$site_path"`;
-    `wp user meta update "$username" wp_temp_expires $expires --allow-root --path="$site_path"`;
+    # Add expiration meta using wp user meta add (safer than update for new fields)
+    # Use format: wp user meta add <user> <key> <value> --allow-root
+    my $meta1_cmd = sprintf('wp user meta add %s wp_temp_user 1 --allow-root --path=%s 2>&1',
+        quotemeta($username), quotemeta($site_path));
+    my $meta1_output = `$meta1_cmd`;
+    my $meta1_exit = $?;
+
+    my $meta2_cmd = sprintf('wp user meta add %s wp_temp_expires %d --allow-root --path=%s 2>&1',
+        quotemeta($username), $expires, quotemeta($site_path));
+    my $meta2_output = `$meta2_cmd`;
+    my $meta2_exit = $?;
+
+    # Log metadata updates with the actual commands
+    write_audit_log('META_ADD', "user=$username cmd=$meta1_cmd", "exit=$meta1_exit output=$meta1_output");
+    write_audit_log('META_ADD', "user=$username cmd=$meta2_cmd", "exit=$meta2_exit output=$meta2_output");
+
+    # Verify metadata was set (defensive check)
+    if ($meta1_exit != 0 || $meta2_exit != 0) {
+        write_audit_log('META_ADD_WARNING', "user=$username", "One or more metadata additions may have failed");
+    }
+
+    # Verify by reading back the metadata (use --format=json for reliable parsing)
+    my $verify_cmd = sprintf('wp user meta list %s --format=json --allow-root --path=%s 2>&1',
+        quotemeta($username), quotemeta($site_path));
+    my $verify_output = `$verify_cmd`;
+    write_audit_log('META_VERIFY', "user=$username cmd=$verify_cmd", "output=$verify_output");
 
     # Get site domain for registry
     my $site_domain = extract_domain_from_site_path($site_path, $cpanel_user);
