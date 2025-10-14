@@ -918,7 +918,8 @@ sub create_temp_user {
     # Create user with WP-CLI
     # Note: Running as cPanel user directly (no sudo needed in cPanel context)
     my $expires = time() + ($days * 86400);
-    my $cmd = qq{wp user create "$username" "$email" --role=administrator --user_pass="$password" --path="$site_path" 2>&1};
+    my $wp = get_wp_cli_path();
+    my $cmd = qq{$wp user create "$username" "$email" --role=administrator --user_pass="$password" --path="$site_path" 2>&1};
     my $output = `$cmd`;
 
     if ($? != 0) {
@@ -929,13 +930,14 @@ sub create_temp_user {
 
     # Add expiration meta using wp user meta add (safer than update for new fields)
     # Use format: wp user meta add <user> <key> <value>
-    my $meta1_cmd = sprintf('wp user meta add %s wp_temp_user 1 --path=%s 2>&1',
-        quotemeta($username), quotemeta($site_path));
+    my $wp = get_wp_cli_path();
+    my $meta1_cmd = sprintf('%s user meta add %s wp_temp_user 1 --path=%s 2>&1',
+        $wp, quotemeta($username), quotemeta($site_path));
     my $meta1_output = `$meta1_cmd`;
     my $meta1_exit = $?;
 
-    my $meta2_cmd = sprintf('wp user meta add %s wp_temp_expires %d --path=%s 2>&1',
-        quotemeta($username), $expires, quotemeta($site_path));
+    my $meta2_cmd = sprintf('%s user meta add %s wp_temp_expires %d --path=%s 2>&1',
+        $wp, quotemeta($username), $expires, quotemeta($site_path));
     my $meta2_output = `$meta2_cmd`;
     my $meta2_exit = $?;
 
@@ -949,8 +951,8 @@ sub create_temp_user {
     }
 
     # Verify by reading back the metadata (use --format=json for reliable parsing)
-    my $verify_cmd = sprintf('wp user meta list %s --format=json --path=%s 2>&1',
-        quotemeta($username), quotemeta($site_path));
+    my $verify_cmd = sprintf('%s user meta list %s --format=json --path=%s 2>&1',
+        $wp, quotemeta($username), quotemeta($site_path));
     my $verify_output = `$verify_cmd`;
     write_audit_log($cpanel_user, 'META_VERIFY', "user=$username cmd=$verify_cmd", "output=$verify_output");
 
@@ -987,8 +989,9 @@ sub list_temp_users {
     my $homedir = (getpwnam($cpanel_user))[7];
     return [] unless $site_path =~ /^\Q$homedir\E\//;
 
+    my $wp = get_wp_cli_path();
     my @users;
-    my $cmd = qq{wp user list --role=administrator --path="$site_path" --format=json 2>&1};
+    my $cmd = qq{$wp user list --role=administrator --path="$site_path" --format=json 2>&1};
     my $output = `$cmd`;
 
     if ($? == 0) {
@@ -996,11 +999,11 @@ sub list_temp_users {
 
         foreach my $user (@$all_users) {
             my $username = $user->{user_login};
-            my $is_temp = `wp user meta get "$username" wp_temp_user --path="$site_path" 2>&1`;
+            my $is_temp = `$wp user meta get "$username" wp_temp_user --path="$site_path" 2>&1`;
             chomp $is_temp;
 
             if ($is_temp eq '1') {
-                my $expires = `wp user meta get "$username" wp_temp_expires --path="$site_path" 2>&1`;
+                my $expires = `$wp user meta get "$username" wp_temp_expires --path="$site_path" 2>&1`;
                 chomp $expires;
 
                 push @users, {
@@ -1034,7 +1037,8 @@ sub delete_temp_user {
     }
 
     # Note: Running as cPanel user directly (no sudo needed in cPanel context)
-    my $cmd = qq{wp user delete "$username" --yes --path="$site_path" 2>&1};
+    my $wp = get_wp_cli_path();
+    my $cmd = qq{$wp user delete "$username" --yes --path="$site_path" 2>&1};
     my $output = `$cmd`;
     my $exit_code = $?;
 
@@ -1064,6 +1068,7 @@ sub list_all_temp_users {
     return [] unless $homedir && -d $homedir;
 
     my @all_temp_users;
+    my $wp = get_wp_cli_path();
 
     # Get all WordPress sites for this user
     my $sites = scan_wordpress($cpanel_user, 0);  # Use cache
@@ -1073,7 +1078,7 @@ sub list_all_temp_users {
         my $site_domain = $site->{domain};
 
         # Query WordPress for users with temp metadata
-        my $cmd = qq{wp user list --role=administrator --path="$site_path" --format=json 2>&1};
+        my $cmd = qq{$wp user list --role=administrator --path="$site_path" --format=json 2>&1};
         my $output = `$cmd`;
 
         if ($? == 0) {
@@ -1083,12 +1088,18 @@ sub list_all_temp_users {
                 my $username = $user->{user_login};
 
                 # Check if this is a temp user
-                my $is_temp = `wp user meta get "$username" wp_temp_user --path="$site_path" 2>&1`;
+                my $is_temp_cmd = qq{$wp user meta get "$username" wp_temp_user --path="$site_path" 2>&1};
+                my $is_temp = `$is_temp_cmd`;
                 chomp $is_temp;
+                $is_temp =~ s/^\s+|\s+$//g;  # Trim whitespace
 
-                if ($is_temp eq '1') {
+                # Log what we got for debugging
+                write_audit_log($cpanel_user, 'META_CHECK', "user=$username site=$site_path", "is_temp='$is_temp' length=" . length($is_temp));
+
+                # Check if this is a temp user (be lenient with comparison)
+                if ($is_temp && $is_temp =~ /^1$/) {
                     # Get expiration time
-                    my $expires = `wp user meta get "$username" wp_temp_expires --path="$site_path" 2>&1`;
+                    my $expires = `$wp user meta get "$username" wp_temp_expires --path="$site_path" 2>&1`;
                     chomp $expires;
 
                     push @all_temp_users, {
@@ -1238,6 +1249,45 @@ sub extract_domain_from_site_path {
 
     my $homedir = (getpwnam($cpanel_user))[7];
     return extract_domain_from_path($site_path, $homedir);
+}
+
+###############################################################################
+# WP-CLI Path Detection
+###############################################################################
+
+my $wp_cli_path_cache;
+
+sub get_wp_cli_path {
+    # Return cached path if already detected
+    return $wp_cli_path_cache if $wp_cli_path_cache;
+
+    # Try to find wp-cli in common locations
+    my @possible_paths = (
+        '/usr/local/bin/wp',
+        '/usr/bin/wp',
+        '/opt/cpanel/composer/bin/wp',
+        '/usr/local/cpanel/3rdparty/bin/wp',
+    );
+
+    # First try using 'which' command
+    my $which_result = `which wp 2>/dev/null`;
+    chomp $which_result;
+    if ($which_result && -x $which_result) {
+        $wp_cli_path_cache = $which_result;
+        return $wp_cli_path_cache;
+    }
+
+    # Fall back to checking common paths
+    foreach my $path (@possible_paths) {
+        if (-x $path) {
+            $wp_cli_path_cache = $path;
+            return $wp_cli_path_cache;
+        }
+    }
+
+    # Default to 'wp' and hope it's in PATH
+    $wp_cli_path_cache = 'wp';
+    return $wp_cli_path_cache;
 }
 
 ###############################################################################

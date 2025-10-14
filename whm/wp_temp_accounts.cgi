@@ -863,9 +863,13 @@ sub create_temp_user {
     # Generate password
     my $password = generate_password();
 
+    # Get WP-CLI path
+    my $wp = get_wp_cli_path();
+
     # Create user with WP-CLI
     my $expires = time() + ($days * 86400);
-    my $cmd = qq{wp user create "$username" "$email" --role=administrator --user_pass="$password" --allow-root --path="$site_path" 2>&1};
+    my $cmd = sprintf('%s user create %s %s --role=administrator --user_pass=%s --allow-root --path=%s 2>&1',
+        $wp, quotemeta($username), quotemeta($email), quotemeta($password), quotemeta($site_path));
     my $output = `$cmd`;
 
     if ($? != 0) {
@@ -876,13 +880,13 @@ sub create_temp_user {
 
     # Add expiration meta using wp user meta add (safer than update for new fields)
     # Use format: wp user meta add <user> <key> <value> --allow-root
-    my $meta1_cmd = sprintf('wp user meta add %s wp_temp_user 1 --allow-root --path=%s 2>&1',
-        quotemeta($username), quotemeta($site_path));
+    my $meta1_cmd = sprintf('%s user meta add %s wp_temp_user 1 --allow-root --path=%s 2>&1',
+        $wp, quotemeta($username), quotemeta($site_path));
     my $meta1_output = `$meta1_cmd`;
     my $meta1_exit = $?;
 
-    my $meta2_cmd = sprintf('wp user meta add %s wp_temp_expires %d --allow-root --path=%s 2>&1',
-        quotemeta($username), $expires, quotemeta($site_path));
+    my $meta2_cmd = sprintf('%s user meta add %s wp_temp_expires %d --allow-root --path=%s 2>&1',
+        $wp, quotemeta($username), $expires, quotemeta($site_path));
     my $meta2_output = `$meta2_cmd`;
     my $meta2_exit = $?;
 
@@ -896,8 +900,8 @@ sub create_temp_user {
     }
 
     # Verify by reading back the metadata (use --format=json for reliable parsing)
-    my $verify_cmd = sprintf('wp user meta list %s --format=json --allow-root --path=%s 2>&1',
-        quotemeta($username), quotemeta($site_path));
+    my $verify_cmd = sprintf('%s user meta list %s --format=json --allow-root --path=%s 2>&1',
+        $wp, quotemeta($username), quotemeta($site_path));
     my $verify_output = `$verify_cmd`;
     write_audit_log('META_VERIFY', "user=$username cmd=$verify_cmd", "output=$verify_output");
 
@@ -930,8 +934,12 @@ sub list_temp_users {
     my ($site_path) = @_;
     return [] unless $site_path && -d $site_path;
 
+    # Get WP-CLI path
+    my $wp = get_wp_cli_path();
+
     my @users;
-    my $cmd = qq{wp user list --role=administrator --allow-root --path="$site_path" --format=json 2>&1};
+    my $cmd = sprintf('%s user list --role=administrator --allow-root --path=%s --format=json 2>&1',
+        $wp, quotemeta($site_path));
     my $output = `$cmd`;
 
     if ($? == 0) {
@@ -939,11 +947,15 @@ sub list_temp_users {
 
         foreach my $user (@$all_users) {
             my $username = $user->{user_login};
-            my $is_temp = `wp user meta get "$username" wp_temp_user --allow-root --path="$site_path" 2>&1`;
+            my $is_temp_cmd = sprintf('%s user meta get %s wp_temp_user --allow-root --path=%s 2>&1',
+                $wp, quotemeta($username), quotemeta($site_path));
+            my $is_temp = `$is_temp_cmd`;
             chomp $is_temp;
 
             if ($is_temp eq '1') {
-                my $expires = `wp user meta get "$username" wp_temp_expires --allow-root --path="$site_path" 2>&1`;
+                my $expires_cmd = sprintf('%s user meta get %s wp_temp_expires --allow-root --path=%s 2>&1',
+                    $wp, quotemeta($username), quotemeta($site_path));
+                my $expires = `$expires_cmd`;
                 chomp $expires;
 
                 push @users, {
@@ -970,7 +982,11 @@ sub delete_temp_user {
         return;
     }
 
-    my $cmd = qq{wp user delete "$username" --yes --allow-root --path="$site_path" 2>&1};
+    # Get WP-CLI path
+    my $wp = get_wp_cli_path();
+
+    my $cmd = sprintf('%s user delete %s --yes --allow-root --path=%s 2>&1',
+        $wp, quotemeta($username), quotemeta($site_path));
     my $output = `$cmd`;
     my $exit_code = $?;
 
@@ -996,6 +1012,9 @@ sub list_all_temp_users {
     # Scan ALL cPanel accounts and WordPress sites to find temp users
     # This ensures accuracy even if registry is empty/out-of-sync
 
+    # Get WP-CLI path
+    my $wp = get_wp_cli_path();
+
     my @all_temp_users;
 
     # Get all cPanel accounts
@@ -1012,7 +1031,8 @@ sub list_all_temp_users {
             my $site_domain = $site->{domain};
 
             # Query WordPress for users with temp metadata
-            my $cmd = qq{wp user list --role=administrator --path="$site_path" --allow-root --format=json 2>&1};
+            my $cmd = sprintf('%s user list --role=administrator --path=%s --allow-root --format=json 2>&1',
+                $wp, quotemeta($site_path));
             my $output = `$cmd`;
 
             if ($? == 0) {
@@ -1022,12 +1042,16 @@ sub list_all_temp_users {
                     my $username = $user->{user_login};
 
                     # Check if this is a temp user
-                    my $is_temp = `wp user meta get "$username" wp_temp_user --path="$site_path" --allow-root 2>&1`;
+                    my $is_temp_cmd = sprintf('%s user meta get %s wp_temp_user --path=%s --allow-root 2>&1',
+                        $wp, quotemeta($username), quotemeta($site_path));
+                    my $is_temp = `$is_temp_cmd`;
                     chomp $is_temp;
 
                     if ($is_temp eq '1') {
                         # Get expiration time
-                        my $expires = `wp user meta get "$username" wp_temp_expires --path="$site_path" --allow-root 2>&1`;
+                        my $expires_cmd = sprintf('%s user meta get %s wp_temp_expires --path=%s --allow-root 2>&1',
+                            $wp, quotemeta($username), quotemeta($site_path));
+                        my $expires = `$expires_cmd`;
                         chomp $expires;
 
                         push @all_temp_users, {
@@ -1173,6 +1197,45 @@ sub extract_domain_from_site_path {
 
     my $homedir = (getpwnam($cpanel_user))[7];
     return extract_domain_from_path($site_path, $homedir);
+}
+
+###############################################################################
+# WP-CLI Path Detection
+###############################################################################
+
+my $wp_cli_path_cache;
+
+sub get_wp_cli_path {
+    # Return cached path if already detected
+    return $wp_cli_path_cache if $wp_cli_path_cache;
+
+    # Try to find wp-cli in common locations
+    my @possible_paths = (
+        '/usr/local/bin/wp',
+        '/usr/bin/wp',
+        '/opt/cpanel/composer/bin/wp',
+        '/usr/local/cpanel/3rdparty/bin/wp',
+    );
+
+    # First try using 'which' command
+    my $which_result = `which wp 2>/dev/null`;
+    chomp $which_result;
+    if ($which_result && -x $which_result) {
+        $wp_cli_path_cache = $which_result;
+        return $wp_cli_path_cache;
+    }
+
+    # Fall back to checking common paths
+    foreach my $path (@possible_paths) {
+        if (-x $path) {
+            $wp_cli_path_cache = $path;
+            return $wp_cli_path_cache;
+        }
+    }
+
+    # Default to 'wp' and hope it's in PATH
+    $wp_cli_path_cache = 'wp';
+    return $wp_cli_path_cache;
 }
 
 ###############################################################################

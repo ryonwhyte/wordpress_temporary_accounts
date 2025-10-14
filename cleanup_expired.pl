@@ -14,6 +14,42 @@ use Cpanel::JSON();
 my $registry_file = '/var/cache/wp_temp_accounts/registry.json';
 my $log_file = '/var/log/wp_temp_accounts/cleanup.log';
 
+# WP-CLI path detection
+my $wp_cli_path_cache;
+
+sub get_wp_cli_path {
+    # Return cached path if already detected
+    return $wp_cli_path_cache if $wp_cli_path_cache;
+
+    # Try to find wp-cli in common locations
+    my @possible_paths = (
+        '/usr/local/bin/wp',
+        '/usr/bin/wp',
+        '/opt/cpanel/composer/bin/wp',
+        '/usr/local/cpanel/3rdparty/bin/wp',
+    );
+
+    # First try using 'which' command
+    my $which_result = `which wp 2>/dev/null`;
+    chomp $which_result;
+    if ($which_result && -x $which_result) {
+        $wp_cli_path_cache = $which_result;
+        return $wp_cli_path_cache;
+    }
+
+    # Fall back to checking common paths
+    foreach my $path (@possible_paths) {
+        if (-x $path) {
+            $wp_cli_path_cache = $path;
+            return $wp_cli_path_cache;
+        }
+    }
+
+    # Default to 'wp' and hope it's in PATH
+    $wp_cli_path_cache = 'wp';
+    return $wp_cli_path_cache;
+}
+
 sub log_message {
     my ($message) = @_;
     my $timestamp = scalar localtime(time());
@@ -68,6 +104,9 @@ sub cleanup_expired_users {
     my $registry = load_registry();
     my @users = @{$registry->{users} || []};
 
+    # Get WP-CLI path
+    my $wp = get_wp_cli_path();
+
     my @remaining_users;
     my $deleted_count = 0;
 
@@ -81,7 +120,9 @@ sub cleanup_expired_users {
         if ($expires && $expires =~ /^\d+$/ && $expires < $current_time) {
             # Expired - attempt deletion from WordPress
             # Note: Running as root via cron, so use --allow-root flag
-            my $cmd = qq{wp user delete "$username" --yes --allow-root --path="$site_path" 2>&1};
+            # Use sprintf with quotemeta for safe command construction
+            my $cmd = sprintf('%s user delete %s --yes --allow-root --path=%s 2>&1',
+                $wp, quotemeta($username), quotemeta($site_path));
             my $output = `$cmd`;
 
             if ($? == 0) {
