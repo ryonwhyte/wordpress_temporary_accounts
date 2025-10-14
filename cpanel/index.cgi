@@ -931,13 +931,13 @@ sub create_temp_user {
     # Add expiration meta using wp user meta add (safer than update for new fields)
     # Use format: wp user meta add <user> <key> <value>
     my $wp = get_wp_cli_path();
-    my $meta1_cmd = sprintf('%s user meta add %s wp_temp_user 1 --path=%s 2>&1',
-        $wp, quotemeta($username), quotemeta($site_path));
+    my $meta1_cmd = sprintf('%s user meta add %s wp_temp_user 1 --path="%s" 2>&1',
+        $wp, quotemeta($username), $site_path);
     my $meta1_output = `$meta1_cmd`;
     my $meta1_exit = $?;
 
-    my $meta2_cmd = sprintf('%s user meta add %s wp_temp_expires %d --path=%s 2>&1',
-        $wp, quotemeta($username), $expires, quotemeta($site_path));
+    my $meta2_cmd = sprintf('%s user meta add %s wp_temp_expires %d --path="%s" 2>&1',
+        $wp, quotemeta($username), $expires, $site_path);
     my $meta2_output = `$meta2_cmd`;
     my $meta2_exit = $?;
 
@@ -951,8 +951,8 @@ sub create_temp_user {
     }
 
     # Verify by reading back the metadata (use --format=json for reliable parsing)
-    my $verify_cmd = sprintf('%s user meta list %s --format=json --path=%s 2>&1',
-        $wp, quotemeta($username), quotemeta($site_path));
+    my $verify_cmd = sprintf('%s user meta list %s --format=json --path="%s" 2>&1',
+        $wp, quotemeta($username), $site_path);
     my $verify_output = `$verify_cmd`;
     write_audit_log($cpanel_user, 'META_VERIFY', "user=$username cmd=$verify_cmd", "output=$verify_output");
 

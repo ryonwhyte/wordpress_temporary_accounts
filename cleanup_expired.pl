@@ -120,9 +120,9 @@ sub cleanup_expired_users {
         if ($expires && $expires =~ /^\d+$/ && $expires < $current_time) {
             # Expired - attempt deletion from WordPress
             # Note: Running as root via cron, so use --allow-root flag
-            # Use sprintf with quotemeta for safe command construction
-            my $cmd = sprintf('%s user delete %s --yes --allow-root --path=%s 2>&1',
-                $wp, quotemeta($username), quotemeta($site_path));
+            # Use sprintf with quotemeta for username only, not paths
+            my $cmd = sprintf('%s user delete %s --yes --allow-root --path="%s" 2>&1',
+                $wp, quotemeta($username), $site_path);
             my $output = `$cmd`;
 
             if ($? == 0) {

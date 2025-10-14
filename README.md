@@ -89,9 +89,37 @@ tail -f /var/log/wp_temp_accounts/cleanup.log
 - **WHM audit log**: `/var/log/wp_temp_accounts/whm.log`
 - **cPanel log**: `/var/log/wp_temp_accounts/cpanel.log`
 
-## Recent Fixes (2025-10-11)
+## Recent Fixes
 
-### cPanel Integration Issues Resolved
+### WP-CLI Path Detection and Command Execution Fix (2025-10-14)
+Fixed critical issue where WP-CLI commands were returning garbage data instead of proper JSON:
+
+**Problem**:
+- When Perl executed WP-CLI commands via backticks, paths with `quotemeta()` were being escaped with backslashes
+- Example: `/home/user/path` became `\/home\/user\/path`
+- This caused WP-CLI to malfunction and return corrupted data instead of JSON
+- Users appeared to be created successfully, but couldn't be listed because metadata queries returned garbage
+
+**Root Cause**:
+- `quotemeta()` escapes shell metacharacters INCLUDING forward slashes
+- File paths should NOT be escaped with `quotemeta()` - only usernames need escaping
+- The escaped paths confused WP-CLI internally
+
+**Solution**:
+1. Removed `quotemeta()` from all `--path=` arguments
+2. Used double quotes around paths for proper handling of spaces: `--path="/home/user/path"`
+3. Kept `quotemeta()` for usernames only (usernames can contain special chars like dots/hyphens)
+4. Added dynamic WP-CLI path detection (`get_wp_cli_path()`) for portability across servers
+
+**Files Modified**:
+- `cpanel/index.cgi` - Fixed all WP-CLI command construction
+- `whm/wp_temp_accounts.cgi` - Fixed all WP-CLI command construction
+- `cleanup_expired.pl` - Fixed WP-CLI command construction
+- All three files now properly detect WP-CLI location dynamically
+
+**Result**: WP-CLI commands now return proper JSON, users are properly listed, and the plugin works correctly.
+
+### cPanel Integration Issues Resolved (2025-10-11)
 Fixed multiple issues preventing the cPanel plugin from appearing and functioning correctly:
 
 1. **Menu Item Not Appearing**
