@@ -50,6 +50,50 @@ sub get_wp_cli_path {
     return $wp_cli_path_cache;
 }
 
+sub run_wp_cli {
+    my ($cmd) = @_;
+
+    # WP-CLI detects CGI environment and refuses to run
+    # We need to clear CGI-related environment variables
+    # Save current environment
+    my %saved_env = (
+        GATEWAY_INTERFACE => $ENV{GATEWAY_INTERFACE},
+        REQUEST_METHOD => $ENV{REQUEST_METHOD},
+        SCRIPT_NAME => $ENV{SCRIPT_NAME},
+        SCRIPT_FILENAME => $ENV{SCRIPT_FILENAME},
+        REQUEST_URI => $ENV{REQUEST_URI},
+        QUERY_STRING => $ENV{QUERY_STRING},
+        HTTP_HOST => $ENV{HTTP_HOST},
+        SERVER_PROTOCOL => $ENV{SERVER_PROTOCOL},
+        SERVER_SOFTWARE => $ENV{SERVER_SOFTWARE},
+    );
+
+    # Clear CGI environment variables to trick WP-CLI into thinking it's CLI
+    delete $ENV{GATEWAY_INTERFACE};
+    delete $ENV{REQUEST_METHOD};
+    delete $ENV{SCRIPT_NAME};
+    delete $ENV{SCRIPT_FILENAME};
+    delete $ENV{REQUEST_URI};
+    delete $ENV{QUERY_STRING};
+    delete $ENV{HTTP_HOST};
+    delete $ENV{SERVER_PROTOCOL};
+    delete $ENV{SERVER_SOFTWARE};
+
+    # Execute the WP-CLI command
+    my $output = `$cmd`;
+    my $exit_code = $?;
+
+    # Restore environment
+    foreach my $key (keys %saved_env) {
+        if (defined $saved_env{$key}) {
+            $ENV{$key} = $saved_env{$key};
+        }
+    }
+
+    # Return output and exit code
+    wantarray ? ($output, $exit_code) : $output;
+}
+
 sub log_message {
     my ($message) = @_;
     my $timestamp = scalar localtime(time());
@@ -123,9 +167,9 @@ sub cleanup_expired_users {
             # Use sprintf with quotemeta for username only, not paths
             my $cmd = sprintf('%s user delete %s --yes --allow-root --path="%s" 2>&1',
                 $wp, quotemeta($username), $site_path);
-            my $output = `$cmd`;
+            my ($output, $exit_code) = run_wp_cli($cmd);
 
-            if ($? == 0) {
+            if ($exit_code == 0) {
                 log_message("Deleted expired user: $username from $site_path (account: $cpanel_user)");
                 $deleted_count++;
                 # Do NOT add to remaining_users - it's deleted
