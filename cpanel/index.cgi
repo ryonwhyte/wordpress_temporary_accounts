@@ -1293,31 +1293,19 @@ sub run_wp_cli {
     my ($cmd) = @_;
 
     # WP-CLI detects CGI/web environment and refuses to run properly
-    # We need to clear ALL web-related environment variables
-    # Save current environment
-    my %saved_env;
-    my @web_vars = qw(
-        GATEWAY_INTERFACE REQUEST_METHOD SCRIPT_NAME SCRIPT_FILENAME
-        REQUEST_URI QUERY_STRING HTTP_HOST SERVER_PROTOCOL SERVER_SOFTWARE
-        DOCUMENT_ROOT SERVER_ADMIN SERVER_NAME SERVER_ADDR SERVER_PORT
-        REMOTE_ADDR REMOTE_PORT HTTP_USER_AGENT HTTP_ACCEPT
-        HTTP_ACCEPT_LANGUAGE HTTP_ACCEPT_ENCODING HTTP_CONNECTION
-        HTTP_REFERER HTTPS REDIRECT_STATUS
-    );
+    # We need to use env -i to start with a clean environment
+    # and only set the variables WP-CLI needs (PATH, HOME, USER)
 
-    foreach my $var (@web_vars) {
-        $saved_env{$var} = $ENV{$var} if exists $ENV{$var};
-        delete $ENV{$var};
-    }
+    my $current_user = $ENV{REMOTE_USER} || $ENV{USER} || 'nobody';
+    my $homedir = (getpwnam($current_user))[7] || $ENV{HOME} || "/home/$current_user";
+    $cmd = sprintf('env -i PATH=/usr/local/bin:/usr/bin:/bin HOME=%s USER=%s %s',
+        quotemeta($homedir),
+        quotemeta($current_user),
+        $cmd);
 
     # Execute the WP-CLI command
     my $output = `$cmd`;
     my $exit_code = $?;
-
-    # Restore environment
-    foreach my $key (keys %saved_env) {
-        $ENV{$key} = $saved_env{$key} if defined $saved_env{$key};
-    }
 
     # Return output and exit code
     wantarray ? ($output, $exit_code) : $output;

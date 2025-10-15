@@ -51,34 +51,28 @@ sub get_wp_cli_path {
 }
 
 sub run_wp_cli {
-    my ($cmd) = @_;
+    my ($cmd, $cpanel_user) = @_;
 
     # WP-CLI detects CGI/web environment and refuses to run properly
-    # We need to clear ALL web-related environment variables
-    # Save current environment
-    my %saved_env;
-    my @web_vars = qw(
-        GATEWAY_INTERFACE REQUEST_METHOD SCRIPT_NAME SCRIPT_FILENAME
-        REQUEST_URI QUERY_STRING HTTP_HOST SERVER_PROTOCOL SERVER_SOFTWARE
-        DOCUMENT_ROOT SERVER_ADMIN SERVER_NAME SERVER_ADDR SERVER_PORT
-        REMOTE_ADDR REMOTE_PORT HTTP_USER_AGENT HTTP_ACCEPT
-        HTTP_ACCEPT_LANGUAGE HTTP_ACCEPT_ENCODING HTTP_CONNECTION
-        HTTP_REFERER HTTPS REDIRECT_STATUS
-    );
+    # Use env -i for clean environment
 
-    foreach my $var (@web_vars) {
-        $saved_env{$var} = $ENV{$var} if exists $ENV{$var};
-        delete $ENV{$var};
+    # Cleanup script runs via cron as root
+    # Run commands as the cPanel user who owns the WordPress installation
+    if ($cpanel_user) {
+        my $homedir = (getpwnam($cpanel_user))[7] || "/home/$cpanel_user";
+        $cmd = sprintf('sudo -u %s env -i PATH=/usr/local/bin:/usr/bin:/bin HOME=%s USER=%s %s',
+            quotemeta($cpanel_user),
+            quotemeta($homedir),
+            quotemeta($cpanel_user),
+            $cmd);
+    } else {
+        # Fallback if no user provided (shouldn't happen in cleanup context)
+        $cmd = "env -i PATH=/usr/local/bin:/usr/bin:/bin $cmd";
     }
 
     # Execute the WP-CLI command
     my $output = `$cmd`;
     my $exit_code = $?;
-
-    # Restore environment
-    foreach my $key (keys %saved_env) {
-        $ENV{$key} = $saved_env{$key} if defined $saved_env{$key};
-    }
 
     # Return output and exit code
     wantarray ? ($output, $exit_code) : $output;
@@ -153,11 +147,11 @@ sub cleanup_expired_users {
         # Check if expired
         if ($expires && $expires =~ /^\d+$/ && $expires < $current_time) {
             # Expired - attempt deletion from WordPress
-            # Note: Running as root via cron, so use --allow-root flag
+            # Running as root via cron, so use sudo to run as cPanel user
             # Use sprintf with quotemeta for username only, not paths
-            my $cmd = sprintf('%s user delete %s --yes --allow-root --path="%s" 2>&1',
+            my $cmd = sprintf('%s user delete %s --yes --path="%s" 2>&1',
                 $wp, quotemeta($username), $site_path);
-            my ($output, $exit_code) = run_wp_cli($cmd);
+            my ($output, $exit_code) = run_wp_cli($cmd, $cpanel_user);
 
             if ($exit_code == 0) {
                 log_message("Deleted expired user: $username from $site_path (account: $cpanel_user)");
