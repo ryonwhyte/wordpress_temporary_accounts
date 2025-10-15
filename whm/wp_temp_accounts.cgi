@@ -1238,31 +1238,23 @@ sub get_wp_cli_path {
 sub run_wp_cli {
     my ($cmd) = @_;
 
-    # WP-CLI detects CGI environment and refuses to run
-    # We need to clear CGI-related environment variables
+    # WP-CLI detects CGI/web environment and refuses to run properly
+    # We need to clear ALL web-related environment variables
     # Save current environment
-    my %saved_env = (
-        GATEWAY_INTERFACE => $ENV{GATEWAY_INTERFACE},
-        REQUEST_METHOD => $ENV{REQUEST_METHOD},
-        SCRIPT_NAME => $ENV{SCRIPT_NAME},
-        SCRIPT_FILENAME => $ENV{SCRIPT_FILENAME},
-        REQUEST_URI => $ENV{REQUEST_URI},
-        QUERY_STRING => $ENV{QUERY_STRING},
-        HTTP_HOST => $ENV{HTTP_HOST},
-        SERVER_PROTOCOL => $ENV{SERVER_PROTOCOL},
-        SERVER_SOFTWARE => $ENV{SERVER_SOFTWARE},
+    my %saved_env;
+    my @web_vars = qw(
+        GATEWAY_INTERFACE REQUEST_METHOD SCRIPT_NAME SCRIPT_FILENAME
+        REQUEST_URI QUERY_STRING HTTP_HOST SERVER_PROTOCOL SERVER_SOFTWARE
+        DOCUMENT_ROOT SERVER_ADMIN SERVER_NAME SERVER_ADDR SERVER_PORT
+        REMOTE_ADDR REMOTE_PORT HTTP_USER_AGENT HTTP_ACCEPT
+        HTTP_ACCEPT_LANGUAGE HTTP_ACCEPT_ENCODING HTTP_CONNECTION
+        HTTP_REFERER HTTPS REDIRECT_STATUS
     );
 
-    # Clear CGI environment variables to trick WP-CLI into thinking it's CLI
-    delete $ENV{GATEWAY_INTERFACE};
-    delete $ENV{REQUEST_METHOD};
-    delete $ENV{SCRIPT_NAME};
-    delete $ENV{SCRIPT_FILENAME};
-    delete $ENV{REQUEST_URI};
-    delete $ENV{QUERY_STRING};
-    delete $ENV{HTTP_HOST};
-    delete $ENV{SERVER_PROTOCOL};
-    delete $ENV{SERVER_SOFTWARE};
+    foreach my $var (@web_vars) {
+        $saved_env{$var} = $ENV{$var} if exists $ENV{$var};
+        delete $ENV{$var};
+    }
 
     # Execute the WP-CLI command
     my $output = `$cmd`;
@@ -1270,9 +1262,7 @@ sub run_wp_cli {
 
     # Restore environment
     foreach my $key (keys %saved_env) {
-        if (defined $saved_env{$key}) {
-            $ENV{$key} = $saved_env{$key};
-        }
+        $ENV{$key} = $saved_env{$key} if defined $saved_env{$key};
     }
 
     # Return output and exit code
