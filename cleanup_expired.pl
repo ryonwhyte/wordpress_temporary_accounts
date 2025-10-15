@@ -8,6 +8,7 @@
 
 use strict;
 use warnings;
+use lib '/usr/local/cpanel';
 use Cpanel::JSON();
 
 # Registry file
