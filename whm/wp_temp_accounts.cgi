@@ -181,7 +181,7 @@ sub handle_api_request {
         create_temp_user($payload);
     }
     elsif ($action eq 'list_temp_users') {
-        my $users = list_temp_users($payload->{site_path});
+        my $users = list_temp_users($payload->{site_path}, $payload->{cpanel_user});
         print_json_success($users);
     }
     elsif ($action eq 'delete_temp_user') {
@@ -866,11 +866,11 @@ sub create_temp_user {
     # Get WP-CLI path
     my $wp = get_wp_cli_path();
 
-    # Create user with WP-CLI
+    # Create user with WP-CLI (run as cPanel user, not root)
     my $expires = time() + ($days * 86400);
-    my $cmd = sprintf('%s user create %s %s --role=administrator --user_pass=%s --allow-root --path="%s" 2>&1',
+    my $cmd = sprintf('%s user create %s %s --role=administrator --user_pass=%s --path="%s" 2>&1',
         $wp, quotemeta($username), quotemeta($email), quotemeta($password), $site_path);
-    my ($output, $exit_code) = run_wp_cli($cmd);
+    my ($output, $exit_code) = run_wp_cli($cmd, $cpanel_user);
 
     if ($exit_code != 0) {
         write_audit_log('CREATE_USER_FAILED', "user=$username site=$site_path", "error: $output");
@@ -878,15 +878,14 @@ sub create_temp_user {
         return;
     }
 
-    # Add expiration meta using wp user meta add (safer than update for new fields)
-    # Use format: wp user meta add <user> <key> <value> --allow-root
-    my $meta1_cmd = sprintf('%s user meta add %s wp_temp_user 1 --allow-root --path="%s" 2>&1',
+    # Add expiration meta using wp user meta add (run as cPanel user)
+    my $meta1_cmd = sprintf('%s user meta add %s wp_temp_user 1 --path="%s" 2>&1',
         $wp, quotemeta($username), $site_path);
-    my ($meta1_output, $meta1_exit) = run_wp_cli($meta1_cmd);
+    my ($meta1_output, $meta1_exit) = run_wp_cli($meta1_cmd, $cpanel_user);
 
-    my $meta2_cmd = sprintf('%s user meta add %s wp_temp_expires %d --allow-root --path="%s" 2>&1',
+    my $meta2_cmd = sprintf('%s user meta add %s wp_temp_expires %d --path="%s" 2>&1',
         $wp, quotemeta($username), $expires, $site_path);
-    my ($meta2_output, $meta2_exit) = run_wp_cli($meta2_cmd);
+    my ($meta2_output, $meta2_exit) = run_wp_cli($meta2_cmd, $cpanel_user);
 
     # Log metadata updates with the actual commands
     write_audit_log('META_ADD', "user=$username cmd=$meta1_cmd", "exit=$meta1_exit output=$meta1_output");
@@ -898,9 +897,9 @@ sub create_temp_user {
     }
 
     # Verify by reading back the metadata (use --format=json for reliable parsing)
-    my $verify_cmd = sprintf('%s user meta list %s --format=json --allow-root --path="%s" 2>&1',
+    my $verify_cmd = sprintf('%s user meta list %s --format=json --path="%s" 2>&1',
         $wp, quotemeta($username), $site_path);
-    my $verify_output = run_wp_cli($verify_cmd);
+    my $verify_output = run_wp_cli($verify_cmd, $cpanel_user);
     write_audit_log('META_VERIFY', "user=$username cmd=$verify_cmd", "output=$verify_output");
 
     # Get site domain for registry
@@ -929,31 +928,37 @@ sub create_temp_user {
 }
 
 sub list_temp_users {
-    my ($site_path) = @_;
+    my ($site_path, $cpanel_user) = @_;
     return [] unless $site_path && -d $site_path;
 
     # Get WP-CLI path
     my $wp = get_wp_cli_path();
 
     my @users;
-    my $cmd = sprintf('%s user list --role=administrator --allow-root --path="%s" --format=json 2>&1',
+    my $cmd = sprintf('%s user list --role=administrator --path="%s" --format=json 2>&1',
         $wp, $site_path);
-    my ($output, $exit_code) = run_wp_cli($cmd);
+    my ($output, $exit_code) = run_wp_cli($cmd, $cpanel_user);
 
     if ($exit_code == 0) {
-        my $all_users = eval { Cpanel::JSON::Load($output) } || [];
+        my $all_users = eval { Cpanel::JSON::Load($output) };
+
+        # Return empty array if JSON parsing failed or result is not an array
+        if (!$all_users || ref($all_users) ne 'ARRAY') {
+            write_audit_log('LIST_USERS_JSON_ERROR', "site=$site_path", "Invalid JSON output: $output");
+            return [];
+        }
 
         foreach my $user (@$all_users) {
             my $username = $user->{user_login};
-            my $is_temp_cmd = sprintf('%s user meta get %s wp_temp_user --allow-root --path="%s" 2>&1',
+            my $is_temp_cmd = sprintf('%s user meta get %s wp_temp_user --path="%s" 2>&1',
                 $wp, quotemeta($username), $site_path);
-            my $is_temp = run_wp_cli($is_temp_cmd);
+            my $is_temp = run_wp_cli($is_temp_cmd, $cpanel_user);
             chomp $is_temp;
 
             if ($is_temp eq '1') {
-                my $expires_cmd = sprintf('%s user meta get %s wp_temp_expires --allow-root --path="%s" 2>&1',
+                my $expires_cmd = sprintf('%s user meta get %s wp_temp_expires --path="%s" 2>&1',
                     $wp, quotemeta($username), $site_path);
-                my $expires = run_wp_cli($expires_cmd);
+                my $expires = run_wp_cli($expires_cmd, $cpanel_user);
                 chomp $expires;
 
                 push @users, {
@@ -983,9 +988,9 @@ sub delete_temp_user {
     # Get WP-CLI path
     my $wp = get_wp_cli_path();
 
-    my $cmd = sprintf('%s user delete %s --yes --allow-root --path="%s" 2>&1',
+    my $cmd = sprintf('%s user delete %s --yes --path="%s" 2>&1',
         $wp, quotemeta($username), $site_path);
-    my ($output, $exit_code) = run_wp_cli($cmd);
+    my ($output, $exit_code) = run_wp_cli($cmd, $cpanel_user);
 
     # Log the WP-CLI output for debugging
     write_audit_log('DELETE_USER_ATTEMPT', "user=$username site=$site_path cmd=$cmd", "exit_code=$exit_code output=$output");
@@ -1028,27 +1033,33 @@ sub list_all_temp_users {
             my $site_domain = $site->{domain};
 
             # Query WordPress for users with temp metadata
-            my $cmd = sprintf('%s user list --role=administrator --path="%s" --allow-root --format=json 2>&1',
+            my $cmd = sprintf('%s user list --role=administrator --path="%s" --format=json 2>&1',
                 $wp, $site_path);
-            my ($output, $exit_code) = run_wp_cli($cmd);
+            my ($output, $exit_code) = run_wp_cli($cmd, $cpanel_user);
 
             if ($exit_code == 0) {
-                my $all_users = eval { Cpanel::JSON::Load($output) } || [];
+                my $all_users = eval { Cpanel::JSON::Load($output) };
+
+                # Skip if JSON parsing failed or result is not an array
+                if (!$all_users || ref($all_users) ne 'ARRAY') {
+                    write_audit_log('LIST_USERS_JSON_ERROR', "site=$site_path account=$cpanel_user", "Invalid JSON output: $output");
+                    next;
+                }
 
                 foreach my $user (@$all_users) {
                     my $username = $user->{user_login};
 
                     # Check if this is a temp user
-                    my $is_temp_cmd = sprintf('%s user meta get %s wp_temp_user --path="%s" --allow-root 2>&1',
+                    my $is_temp_cmd = sprintf('%s user meta get %s wp_temp_user --path="%s" 2>&1',
                         $wp, quotemeta($username), $site_path);
-                    my $is_temp = run_wp_cli($is_temp_cmd);
+                    my $is_temp = run_wp_cli($is_temp_cmd, $cpanel_user);
                     chomp $is_temp;
 
                     if ($is_temp eq '1') {
                         # Get expiration time
-                        my $expires_cmd = sprintf('%s user meta get %s wp_temp_expires --path="%s" --allow-root 2>&1',
+                        my $expires_cmd = sprintf('%s user meta get %s wp_temp_expires --path="%s" 2>&1',
                             $wp, quotemeta($username), $site_path);
-                        my $expires = run_wp_cli($expires_cmd);
+                        my $expires = run_wp_cli($expires_cmd, $cpanel_user);
                         chomp $expires;
 
                         push @all_temp_users, {
@@ -1236,7 +1247,7 @@ sub get_wp_cli_path {
 }
 
 sub run_wp_cli {
-    my ($cmd) = @_;
+    my ($cmd, $cpanel_user) = @_;
 
     # WP-CLI detects CGI/web environment and refuses to run properly
     # We need to clear ALL web-related environment variables
@@ -1254,6 +1265,13 @@ sub run_wp_cli {
     foreach my $var (@web_vars) {
         $saved_env{$var} = $ENV{$var} if exists $ENV{$var};
         delete $ENV{$var};
+    }
+
+    # If cpanel_user is provided (WHM context), run as that user
+    # Otherwise run as current user (cPanel context)
+    if ($cpanel_user) {
+        # WHM: Run as the cPanel user using sudo
+        $cmd = sprintf('sudo -u %s %s', quotemeta($cpanel_user), $cmd);
     }
 
     # Execute the WP-CLI command
