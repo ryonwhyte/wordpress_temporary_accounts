@@ -91,6 +91,47 @@ tail -f /var/log/wp_temp_accounts/cleanup.log
 
 ## Recent Fixes
 
+### Cleanup Script and Duplicate Sites Fix (2025-10-15)
+Fixed critical issues with automatic cleanup and duplicate WordPress site listings:
+
+**Problem 1 - Cleanup Not Working**:
+- Cleanup script ran hourly but never deleted expired users
+- Registry file was empty, cleanup relied on registry for user list
+- Manual execution showed "Found: 0 users" even though users existed in WordPress
+
+**Root Cause**:
+- Cleanup script depended on registry file being populated during user creation
+- Registry wasn't being reliably updated, causing cleanup to find nothing
+- Disconnect between WordPress reality and registry tracking
+
+**Solution**:
+1. Rewrote `cleanup_expired.pl` to scan WordPress directly (like the UI does)
+2. Added `list_cpanel_accounts()` - reads all cPanel accounts from /etc/trueuserdomains
+3. Added `scan_wordpress_sites()` - finds all WordPress installations per account
+4. Added `find_wordpress_in_dir()` - recursive WordPress discovery
+5. Cleanup now: scans all accounts → finds all WP sites → queries for temp users → deletes expired ones
+6. Registry is now updated AFTER cleanup as a record (not source of truth)
+
+**Problem 2 - Duplicate WordPress Sites**:
+- Same WordPress installation appeared twice in site listings
+- Example: `/home/user/public_html/site` and `/home/user/www/site`
+- `/www` is often a symlink to `/public_html`, causing duplicates
+
+**Solution**:
+1. Added symlink resolution using `Cwd::realpath` in both WHM and cPanel
+2. Deduplicate sites using `%seen_paths` hash to track real paths
+3. Only unique real paths are returned to UI
+
+**Files Modified**:
+- `cleanup_expired.pl` - Complete rewrite to scan WordPress directly, added cPanel account enumeration
+- `whm/wp_temp_accounts.cgi` - Added symlink deduplication to `scan_wordpress()`
+- `cpanel/index.cgi` - Added symlink deduplication to `scan_wordpress()`
+
+**Result**:
+- Cleanup now works reliably - finds and deletes expired users every hour
+- No more duplicate site listings in UI
+- System is self-sufficient and doesn't rely on registry accuracy
+
 ### WP-CLI Path Detection and Command Execution Fix (2025-10-14)
 Fixed critical issue where WP-CLI commands were returning garbage data instead of proper JSON:
 
