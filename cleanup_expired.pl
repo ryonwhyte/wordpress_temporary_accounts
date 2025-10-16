@@ -128,59 +128,165 @@ sub save_registry {
     return 0;
 }
 
+sub list_cpanel_accounts {
+    my @accounts;
+
+    # Read /etc/trueuserdomains
+    if (open my $fh, '<', '/etc/trueuserdomains') {
+        while (my $line = <$fh>) {
+            chomp $line;
+            next unless $line;
+            my ($domain, $user) = split /:\s*/, $line, 2;
+            next unless $user;
+
+            push @accounts, {
+                user => $user,
+                domain => $domain
+            };
+        }
+        close $fh;
+    }
+
+    return \@accounts;
+}
+
+sub scan_wordpress_sites {
+    my ($cpanel_user) = @_;
+
+    my $homedir = (getpwnam($cpanel_user))[7];
+    return [] unless $homedir && -d $homedir;
+
+    my @sites;
+    my @search_roots = (
+        "$homedir/public_html",
+        "$homedir/www",
+        glob("$homedir/domains/*/public_html")
+    );
+
+    foreach my $root (@search_roots) {
+        next unless -d $root;
+        find_wordpress_in_dir($root, \@sites);
+    }
+
+    return \@sites;
+}
+
+sub find_wordpress_in_dir {
+    my ($dir, $sites_ref) = @_;
+
+    # Check if wp-config.php exists
+    if (-f "$dir/wp-config.php") {
+        push @$sites_ref, { path => $dir };
+        return;
+    }
+
+    # Scan subdirectories (max depth 3)
+    opendir(my $dh, $dir) or return;
+    my @subdirs = grep {
+        $_ ne '.' && $_ ne '..' &&
+        -d "$dir/$_" &&
+        $_ !~ /^\./ &&
+        $_ ne 'wp-admin' &&
+        $_ ne 'wp-content' &&
+        $_ ne 'wp-includes'
+    } readdir($dh);
+    closedir($dh);
+
+    foreach my $subdir (@subdirs) {
+        find_wordpress_in_dir("$dir/$subdir", $sites_ref);
+    }
+}
+
 sub cleanup_expired_users {
     my $current_time = time();
-    my $registry = load_registry();
-    my @users = @{$registry->{users} || []};
-
-    # Get WP-CLI path
     my $wp = get_wp_cli_path();
 
-    my @remaining_users;
     my $deleted_count = 0;
+    my $total_temp_users = 0;
+    my @all_temp_users;
 
-    foreach my $user (@users) {
-        my $cpanel_user = $user->{cpanel_account};
-        my $site_path = $user->{site_path};
-        my $username = $user->{username};
-        my $expires = $user->{expires};
+    # Get all cPanel accounts
+    my $accounts = list_cpanel_accounts();
+    log_message("Scanning " . scalar(@$accounts) . " cPanel accounts for temporary users");
 
-        # Check if expired
-        if ($expires && $expires =~ /^\d+$/ && $expires < $current_time) {
-            # Expired - attempt deletion from WordPress
-            # Running as root via cron, so use sudo to run as cPanel user
-            # Use sprintf with quotemeta for username only, not paths
-            my $cmd = sprintf('%s user delete %s --yes --path="%s" 2>&1',
-                $wp, quotemeta($username), $site_path);
+    foreach my $account (@$accounts) {
+        my $cpanel_user = $account->{user};
+
+        # Get all WordPress sites for this account
+        my $sites = scan_wordpress_sites($cpanel_user);
+
+        foreach my $site (@$sites) {
+            my $site_path = $site->{path};
+
+            # Query WordPress for admin users
+            my $cmd = sprintf('%s user list --role=administrator --path="%s" --format=json 2>&1',
+                $wp, $site_path);
             my ($output, $exit_code) = run_wp_cli($cmd, $cpanel_user);
 
             if ($exit_code == 0) {
-                log_message("Deleted expired user: $username from $site_path (account: $cpanel_user)");
-                $deleted_count++;
-                # Do NOT add to remaining_users - it's deleted
-            } else {
-                log_message("Failed to delete user: $username from $site_path - $output");
-                # Keep in registry even if delete failed (will retry next time)
-                push @remaining_users, $user;
+                my $all_users = eval { Cpanel::JSON::Load($output) };
+                next unless $all_users && ref($all_users) eq 'ARRAY';
+
+                foreach my $user (@$all_users) {
+                    my $username = $user->{user_login};
+
+                    # Check if this is a temp user
+                    my $is_temp_cmd = sprintf('%s user meta get %s wp_temp_user --path="%s" 2>&1',
+                        $wp, quotemeta($username), $site_path);
+                    my $is_temp = run_wp_cli($is_temp_cmd, $cpanel_user);
+                    chomp $is_temp;
+
+                    if ($is_temp eq '1') {
+                        $total_temp_users++;
+
+                        # Get expiration time
+                        my $expires_cmd = sprintf('%s user meta get %s wp_temp_expires --path="%s" 2>&1',
+                            $wp, quotemeta($username), $site_path);
+                        my $expires = run_wp_cli($expires_cmd, $cpanel_user);
+                        chomp $expires;
+
+                        # Check if expired
+                        if ($expires && $expires =~ /^\d+$/ && $expires < $current_time) {
+                            # Expired - delete it
+                            my $delete_cmd = sprintf('%s user delete %s --yes --path="%s" 2>&1',
+                                $wp, quotemeta($username), $site_path);
+                            my ($delete_output, $delete_exit) = run_wp_cli($delete_cmd, $cpanel_user);
+
+                            if ($delete_exit == 0) {
+                                log_message("Deleted expired user: $username from $site_path (account: $cpanel_user)");
+                                $deleted_count++;
+                            } else {
+                                log_message("Failed to delete user: $username from $site_path - $delete_output");
+                            }
+                        } else {
+                            # Not expired yet - keep for registry
+                            push @all_temp_users, {
+                                cpanel_account => $cpanel_user,
+                                site_path => $site_path,
+                                username => $username,
+                                email => $user->{user_email},
+                                expires => $expires
+                            };
+                        }
+                    }
+                }
             }
-        } else {
-            # Not expired yet - keep in registry
-            push @remaining_users, $user;
         }
     }
 
-    # Update registry with remaining users
-    $registry->{users} = \@remaining_users;
+    # Update registry with current temp users (for record keeping)
+    my $registry = { users => \@all_temp_users };
     save_registry($registry);
 
-    return ($deleted_count, scalar(@users), scalar(@remaining_users));
+    my $remaining = scalar(@all_temp_users);
+    return ($deleted_count, $total_temp_users, $remaining);
 }
 
 # Main execution
-log_message("Starting cleanup of expired temporary users (registry-based)");
+log_message("Starting cleanup of expired temporary users (WordPress scan)");
 
-my ($deleted, $total_before, $total_after) = cleanup_expired_users();
+my ($deleted, $total_temp_users, $remaining) = cleanup_expired_users();
 
-log_message("Cleanup complete. Before: $total_before users, Deleted: $deleted users, After: $total_after users");
+log_message("Cleanup complete. Found: $total_temp_users temp users, Deleted: $deleted expired users, Remaining: $remaining users");
 
 exit 0;

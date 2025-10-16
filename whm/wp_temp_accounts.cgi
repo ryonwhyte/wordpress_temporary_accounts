@@ -729,10 +729,23 @@ sub scan_wordpress {
         find_wordpress_recursive($root, $homedir, \@sites);
     }
 
-    # Cache the results
-    save_cached_wordpress_scan($account, \@sites);
+    # Deduplicate sites using realpath (resolves symlinks)
+    my %seen_paths;
+    my @unique_sites;
+    foreach my $site (@sites) {
+        # Use Cwd::realpath or Cwd::abs_path to resolve symlinks
+        use Cwd 'realpath';
+        my $real_path = realpath($site->{path}) || $site->{path};
 
-    return \@sites;
+        unless ($seen_paths{$real_path}++) {
+            push @unique_sites, $site;
+        }
+    }
+
+    # Cache the results
+    save_cached_wordpress_scan($account, \@unique_sites);
+
+    return \@unique_sites;
 }
 
 sub find_wordpress_recursive {
