@@ -2,195 +2,164 @@
 
 ## Project Overview
 
-This is a **dual-access plugin** for creating and managing temporary WordPress administrator accounts. It works in both **WHM** (for system administrators managing all accounts) and **cPanel** (for individual users managing their own sites). This project represents a complete architectural rebuild from a complex Perl-based implementation to a simple, reliable Node.js/PHP stack.
+A **dual-access WHM/cPanel plugin** for creating and managing temporary WordPress administrator accounts. Works in both **WHM** (system administrators managing all accounts) and **cPanel** (individual users managing their own sites).
 
-## Architecture Decision
+## Current Architecture (v4.0)
 
-### Why the Rebuild?
+**Pure Perl Implementation:**
+- **Backend**: Perl CGI scripts with native cPanel modules
+- **Frontend**: Template Toolkit templates (WHM master template integration)
+- **WordPress Integration**: WP-CLI for user management
+- **Security**: Root-level ACLs for WHM, user-scoped for cPanel
+- **Cleanup**: Cron-based automatic expiration (hourly)
 
-After 2 days of troubleshooting Perl-based WHM plugin issues, the decision was made to completely rebuild using familiar, reliable technologies:
+### Key Components:
+1. **WHM Plugin** (`whm/wp_temp_accounts.cgi` + template)
+2. **cPanel Plugin** (`cpanel/index.live.cgi` + template)
+3. **Cleanup Script** (`cleanup_expired.pl`)
+4. **Installation** (`install.sh` + `uninstall.sh`)
 
-**Previous Architecture (Abandoned):**
-- Perl CGI with complex cPanel modules
-- Multiple dependency issues (Cpanel::PwCache, etc.)
-- Complex variable scoping problems
-- Hard to debug and maintain
+## Features (Latest)
 
-**Current Architecture (Production):**
-- **Node.js daemon** - Backend service handling all WordPress operations
-- **PHP proxies** - Minimal integration layer for both WHM and cPanel
-- **Static HTML/CSS/JS** - Clean, modern frontend (separate for WHM and cPanel)
-- **Unix socket** - Secure IPC with no network exposure
+### User Management
+- ✅ **Create temporary admin users** with custom expiration (30 minutes to 365 days)
+- ✅ **Password modal with copy-to-clipboard** (no more alert dialogs)
+- ✅ **Tabbed interface** (Create User | Manage All Users)
+- ✅ **Real-time filtering** by account/site/username/email
+- ✅ **Persistent all-users view** across all WordPress sites
 
-## Technology Stack
+### WordPress Integration
+- ✅ **Site discovery** via filesystem scanning (wp-config.php detection)
+- ✅ **1-hour caching** of scan results for performance
+- ✅ **WP-CLI integration** for safe user management
+- ✅ **Metadata-based expiration** stored in WordPress usermeta
 
-### Backend: Node.js Daemon (`daemon/server.js`)
-- **Runtime**: Node.js 18+
-- **Communication**: Unix socket at `/var/run/wp-tempd.sock`
-- **Protocol**: JSON-RPC for simple request/response
-- **Service Management**: systemd (`wp-tempd.service`)
-- **Logging**: File-based logging to `/var/log/wp-tempd/wp-tempd.log`
+### Security & Access Control
+- ✅ **WHM**: Full access to all cPanel accounts and WordPress sites
+- ✅ **cPanel**: Scoped to logged-in user's sites only
+- ✅ **Input validation** for usernames, emails, paths
+- ✅ **Path traversal protection** (validates against homedirs)
+- ✅ **Audit logging** with timestamps and IP addresses
 
-**Key Features:**
-- WordPress site discovery (via WP-CLI and filesystem scanning)
-- Temporary user creation with metadata-based expiration
-- cPanel account enumeration
-- Health check endpoint
-- Automatic cleanup (future: cron integration)
+### Automation
+- ✅ **Hourly cron job** for automatic cleanup of expired accounts
+- ✅ **Comprehensive logging** (`/var/log/wp_temp_accounts/`)
 
-### WHM Integration: PHP Proxy (`whm/proxy.php`)
-- **Purpose**: Bridge between WHM and Node.js daemon
-- **Security**: Validates WHM context (root user, ports 2086/2087)
-- **Function**: Forwards JSON requests to Unix socket
-- **Access**: All cPanel accounts, can manage any WordPress site
+## User Interface
 
-### cPanel Integration: PHP Proxy (`cpanel/proxy.php`)
-- **Purpose**: Bridge between cPanel and Node.js daemon
-- **Security**: Validates cPanel user context, auto-injects user into requests
-- **Function**: Forwards JSON requests to Unix socket
-- **Access**: Restricted to logged-in user's WordPress sites only
-- **Allowed Actions**: `health`, `list_wp_installs`, `create_temp_user` (no `list_cpanel_accounts`)
-
-### Frontend (WHM: `whm/frontend/`, cPanel: `cpanel/frontend/`)
-- **index.html** - Clean wizard interface
-- **app.js** - State management and API communication
-- **style.css** - Modern, responsive styling
-
-**WHM User Flow:**
+### WHM Interface
+**Tab 1: Create User**
 1. Select cPanel account
-2. Scan for WordPress installations
-3. Choose WordPress site and configure user
-4. Display credentials with expiry information
+2. Scan for WordPress sites (with cache)
+3. Select WordPress site
+4. Create temporary user (username, email, expiration)
+5. View password in modal with copy button
 
-**cPanel User Flow:**
-1. Scan for WordPress installations (auto-scoped to their account)
-2. Choose WordPress site and configure user
-3. Display credentials with expiry information
+**Tab 2: Manage All Users**
+- Table showing: cPanel Account | WordPress Site | Username | Email | Expires | Actions
+- Filter by any field
+- Delete users with confirmation
+
+### cPanel Interface
+**Tab 1: Create User**
+1. Scan for WordPress sites (auto-scoped to logged-in user)
+2. Select WordPress site
+3. Create temporary user
+4. View password in modal
+
+**Tab 2: Manage All Users**
+- Table showing: WordPress Site | Username | Email | Expires | Actions
+- Filter by any field
+- Delete users
 
 ## File Structure
 
 ```
 wordpress_temporary_accounts/
-├── daemon/
-│   ├── server.js           # Node.js backend (195 lines)
-│   └── package.json        # Dependencies (express, winston)
-├── whm/                    # WHM integration (administrators)
-│   ├── proxy.php           # WHM proxy (validates root user)
-│   └── frontend/
-│       ├── index.html      # WHM UI (with account selector)
-│       ├── app.js          # WHM frontend logic
-│       └── style.css       # Styling
-├── cpanel/                 # cPanel integration (users)
-│   ├── proxy.php           # cPanel proxy (auto-injects user)
-│   └── frontend/
-│       ├── index.html      # cPanel UI (no account selector)
-│       ├── app.js          # cPanel frontend logic
-│       └── style.css       # Styling
+├── whm/                          # WHM integration
+│   ├── wp_temp_accounts.cgi      # Main CGI handler
+│   └── wp_temp_accounts.tmpl     # Template Toolkit template
+├── cpanel/                       # cPanel integration
+│   ├── index.live.cgi            # cPanel CGI handler
+│   ├── index.tmpl                # Template Toolkit template
+│   ├── install.json              # DynamicUI registration
+│   ├── group_wordpress.svg       # Group icon
+│   └── wp_temp_accounts.svg      # Plugin icon
 ├── packaging/
-│   ├── wp-tempd.service           # systemd service definition
-│   ├── wp_temp_accounts.conf      # WHM AppConfig
-│   ├── wp_temp_accounts_cpanel.conf  # cPanel AppConfig
-│   └── wp_temp_accounts_icon.png  # 48x48 PNG icon
-├── install.sh              # Installation script (both WHM + cPanel)
-├── uninstall.sh            # Uninstallation script (both WHM + cPanel)
-├── README.md               # User documentation
-├── LICENSE                 # MIT License
-└── CLAUDE.md               # This file
+│   ├── wp_temp_accounts.conf            # WHM AppConfig
+│   ├── wp_temp_accounts_cpanel.conf     # cPanel AppConfig (legacy)
+│   └── wp_temp_accounts_icon.png        # Plugin icon (48x48)
+├── cleanup_expired.pl        # Cron cleanup script
+├── install.sh                # Installation script
+├── install_cron.sh           # Manual cron setup helper
+├── uninstall.sh              # Uninstallation script
+├── README.md                 # User documentation
+├── LICENSE                   # MIT License
+└── CLAUDE.md                 # This file (development docs)
 ```
 
-## Installation Details
+## Installation
 
-### Installation Script (`install.sh`)
-
-**What it does:**
-1. Checks root privileges
-2. Installs Node.js 18+ (via NodeSource if missing)
-3. Verifies PHP is available
-4. Creates required directories:
-   - `/usr/local/lib/wp-tempd` - Daemon installation
-   - `/var/log/wp-tempd` - Log directory
-   - `/usr/local/cpanel/whostmgr/docroot/cgi/wp_temp_accounts` - WHM files
-   - `/usr/local/cpanel/base/frontend/paper_lantern/wp_temp_accounts` - cPanel files
-5. Installs and starts daemon as systemd service
-6. Installs WHM files (proxy, frontend, icon)
-7. Installs cPanel files (proxy, frontend, icon)
-8. Registers plugin with WHM via AppConfig
-9. Registers plugin with cPanel via AppConfig
-10. Restarts cpsrvd
-
-**Usage:**
+### Quick Install
 ```bash
 cd wordpress_temporary_accounts
 chmod +x install.sh
 ./install.sh
 ```
 
-### Uninstallation Script (`uninstall.sh`)
-
 **What it does:**
-1. Stops and disables wp-tempd service
-2. Removes systemd service file
-3. Unregisters from WHM
-4. Removes all installed files
-5. Optionally preserves logs
+1. Creates directories (`/var/log/wp_temp_accounts`, `/var/cache/wp_temp_accounts`)
+2. Installs WHM plugin files
+3. Installs cPanel plugin files (dynamicui method)
+4. Registers WHM AppConfig
+5. Sets up hourly cron job for cleanup
+6. Restarts cpsrvd
 
-**Usage:**
+### Manual Cron Setup
+```bash
+chmod +x install_cron.sh
+./install_cron.sh
+```
+
+### Uninstall
 ```bash
 ./uninstall.sh
 ```
 
-## API Endpoints (Daemon)
+## API Actions
 
-The Node.js daemon exposes these actions via JSON-RPC:
+Both WHM and cPanel CGI scripts handle POST requests with JSON payloads:
 
-### `health`
-- **Purpose**: Check daemon status
-- **Payload**: None
-- **Response**: `{ status: "ok", uptime_sec: 1234 }`
+### Common Actions
+- **`health`** - System health check
+- **`scan_wordpress`** - Scan for WordPress sites (with force_scan option)
+- **`load_cached_wordpress`** - Load cached scan results
+- **`create_temp_user`** - Create temporary admin user
+- **`list_temp_users`** - List temp users for a specific site
+- **`delete_temp_user`** - Delete a temporary user
+- **`list_all_temp_users`** - Get all temp users (WHM: all accounts, cPanel: user's sites)
 
-### `list_cpanel_accounts`
-- **Purpose**: Get all cPanel accounts on server
-- **Payload**: None
-- **Response**: Array of `{ user, homedir }` objects
+### WHM-Only Actions
+- **`list_cpanel_accounts`** - Get all cPanel accounts on server
 
-### `list_wp_installs`
-- **Purpose**: Scan for WordPress installations in a cPanel account
-- **Payload**: `{ cpanel_user: "username" }`
-- **Response**: Array of WordPress site objects with docroot, db details, table_prefix
+## Security
 
-### `create_temp_user`
-- **Purpose**: Create temporary WordPress admin account
-- **Payload**:
-  ```json
-  {
-    "cpanel_user": "cpaneluser",
-    "site_path": "/home/user/public_html",
-    "role": "administrator",
-    "expiry_hours": 24
-  }
-  ```
-- **Response**: User credentials and expiry information
+### Access Control
+- **WHM**: Validates root access via `Whostmgr::ACLS::hasroot()`
+- **cPanel**: Auto-scoped to `$ENV{REMOTE_USER}`
+- **Path validation**: All site paths validated against user homedirs
+- **Input sanitization**: Usernames, emails, paths validated before processing
 
-## Security Considerations
+### WordPress Operations
+- **WP-CLI**: All operations run via WP-CLI (safe, WordPress-native)
+- **User execution**: Commands run as cPanel user via `sudo -u`
+- **Password generation**: 16-character random (alphanumeric + symbols)
+- **Metadata storage**: Expiry stored in WordPress usermeta
 
-### Network Isolation
-- Unix socket communication only (no TCP/IP exposure)
-- No external network access required
-
-### Authentication
-- PHP proxy validates WHM context (`REMOTE_USER === 'root'`)
-- Only accessible from WHM interface (ports 2086/2087)
-
-### WordPress Integration
-- Uses WP-CLI when available (safe, WordPress-native)
-- Falls back to direct database operations with parameterized queries
-- Passwords generated with 20+ character complexity
-- Expiry stored in WordPress usermeta (not just daemon state)
-
-### File Permissions
-- Daemon files: 644 (root owned)
-- WHM files: 644 (except proxy.php: 755)
-- Log directory: 700 (root only)
+### Audit Logging
+- **Location**: `/var/log/wp_temp_accounts/`
+- **Format**: Timestamp | User | Action | Details | Result | IP
+- **Logs**: WHM actions, cPanel actions, cleanup operations
 
 ## WordPress User Management
 
@@ -226,120 +195,89 @@ Cleanup process:
 2. Compare expiry timestamp to current time
 3. Delete expired users via WP-CLI or direct database
 
-## Development History
+## Development History & Key Fixes
 
-### Version 1.0 - Perl Implementation
-- Complex cPanel module dependencies
-- WP Toolkit integration
-- Multiple security issues identified
+### Major Challenges Overcome
 
-### Version 2.0 - Security Hardening
-- CSRF protection
-- Input validation
-- Fixed command injection vulnerabilities
+**1. WHM Integration Issues**
+- **Problem**: Plugin displayed as standalone page, not integrated with WHM
+- **Solution**: Implemented Template Toolkit with `master_templates/master.tmpl` wrapper
+- **Result**: Seamless integration like native WHM plugins
 
-### Version 3.0 - Universal Compatibility
-- Hybrid detection (WP Toolkit + direct database)
-- WordPress password compatibility fixes
-- Health monitoring system
+**2. JSON Request Handling**
+- **Problem**: "Invalid JSON request" errors on all API calls
+- **Solution**: Dual-mode POST body reading (CGI.pm POSTDATA + STDIN fallback)
+- **Result**: Reliable API communication
 
-### Version 4.0 - Node.js Rebuild (Current)
-- **Complete architectural overhaul**
-- Abandoned Perl in favor of Node.js/PHP
-- Simple, reliable, maintainable
-- Focus on "it just works"
+**3. HTML Rendering Problems**
+- **Problem**: Browser showing raw HTML source instead of rendered page
+- **Solution**: Proper Template Toolkit usage (not heredoc strings)
+- **Result**: Correct HTML rendering with WHM styling
 
-## Lessons Learned
+**4. cPanel DynamicUI Integration**
+- **Problem**: Plugin not appearing in cPanel interface
+- **Solution**: Used `/scripts/install_plugin` with proper install.json
+- **Result**: Native cPanel integration in Software section
 
-### What Didn't Work
-- Over-reliance on cPanel Perl modules (Cpanel::PwCache, etc.)
-- Complex variable scoping in Perl CGI
-- Multiple layers of abstraction
-- 2 days of troubleshooting without resolution
+### Architecture Evolution
 
-### What Works
-- Simple architecture with clear separation of concerns
-- Familiar technologies (Node.js, PHP, vanilla JS)
-- Unix socket for secure, simple IPC
-- Minimal dependencies
-- Easy to debug and maintain
+**v1.0** - Initial Perl with WP Toolkit dependency
+**v2.0** - Security hardening (input validation, CSRF protection)
+**v3.0** - Universal compatibility (direct WordPress detection)
+**v4.0** - Pure Perl with Template Toolkit (current)
 
-## Future Enhancements
+### Latest Features (v4.0)
+- ✅ Tabbed interface (Create | Manage All Users)
+- ✅ Password modal with copy-to-clipboard
+- ✅ Persistent all-users view with filtering
+- ✅ Automatic cleanup via cron
+- ✅ 1-hour caching for WordPress scans
+- ✅ Comprehensive audit logging
 
-### Planned Features
-1. **Automated Cleanup**: Cron job for expired account removal
-2. **Activity Logging**: Track user logins and actions
-3. **Email Notifications**: Alert on account creation/expiration
-4. **Multi-site Support**: WordPress multisite compatibility
-5. **Advanced Roles**: Custom capability management
-6. **API Authentication**: Token-based API access for automation
-
-### Performance Optimizations
-1. **Caching**: Cache WordPress site discovery results
-2. **Connection Pooling**: Reuse database connections
-3. **Background Jobs**: Queue-based processing for bulk operations
-
-## Monitoring & Maintenance
-
-### Health Checks
-```bash
-# Check daemon status
-systemctl status wp-tempd
-
-# View daemon logs
-journalctl -u wp-tempd -f
-tail -f /var/log/wp-tempd/wp-tempd.log
-
-# Test daemon connectivity
-echo '{"action":"health"}' | nc -U /var/run/wp-tempd.sock
-```
+## Troubleshooting
 
 ### Common Issues
 
-**Daemon won't start:**
-- Check Node.js version: `node --version` (requires 18+)
-- Check permissions on `/var/run/wp-tempd.sock`
-- Review logs: `journalctl -u wp-tempd`
-
 **Plugin not appearing in WHM:**
-- Verify AppConfig registration: `/usr/local/cpanel/bin/register_appconfig /var/cpanel/apps/wp_temp_accounts.conf`
-- Check file permissions in `/usr/local/cpanel/whostmgr/docroot/cgi/wp_temp_accounts/`
-- Restart cpsrvd: `/scripts/restartsrv_cpsrvd --hard`
+```bash
+/usr/local/cpanel/bin/register_appconfig /var/cpanel/apps/wp_temp_accounts.conf
+/scripts/restartsrv_cpsrvd --hard
+```
 
-**Can't create users:**
-- Verify WP-CLI is installed: `wp --version`
-- Check WordPress path permissions
-- Review daemon logs for detailed errors
+**Plugin not appearing in cPanel:**
+```bash
+/usr/local/cpanel/scripts/install_plugin /path/to/wp_temp_accounts.tar.gz --theme jupiter
+/scripts/restartsrv_cpsrvd --hard
+```
 
-## Project Status
+**Cron not running:**
+```bash
+crontab -l | grep wp_temp_accounts_cleanup
+./install_cron.sh  # If missing
+```
 
-**Current Status**: Production-ready
+**View logs:**
+```bash
+tail -f /var/log/wp_temp_accounts/whm.log
+tail -f /var/log/wp_temp_accounts/cpanel.log
+tail -f /var/log/wp_temp_accounts/cleanup.log
+```
 
-**Testing Status**:
-- ✅ Installation script created
-- ⏳ End-to-end testing pending
-- ⏳ Multi-WordPress environment testing pending
-- ⏳ WP-CLI fallback testing pending
+## Future Enhancements
 
-**Known Limitations**:
-- Manual cleanup (cron not yet implemented)
-- No email notifications
-- No activity tracking/audit logs
-- No WordPress multisite support
+### Possible Features
+- Email notifications on user creation/expiration
+- WordPress multisite support
+- Custom capability management
+- Bulk user operations
+- Usage statistics/reporting
 
 ## License
 
 MIT License - See LICENSE file for details
 
-## Support
-
-For issues or questions:
-1. Check daemon logs: `/var/log/wp-tempd/wp-tempd.log`
-2. Review systemd status: `systemctl status wp-tempd`
-3. Verify WHM AppConfig: `/var/cpanel/apps/wp_temp_accounts.conf`
-
 ---
 
-**Last Updated**: 2025-09-30
-**Version**: 4.0 (Node.js Architecture)
+**Last Updated**: 2025-10-02
+**Version**: 4.0 (Pure Perl with Template Toolkit)
 **Author**: Ryon Whyte

@@ -3,40 +3,49 @@ eval 'if [ -x /usr/local/cpanel/3rdparty/bin/perl ]; then exec /usr/local/cpanel
 if 0;
 #!/usr/bin/perl
 
-#WHMADDON:wp_temp_accounts:WordPress Temporary Accounts
-#ACLS:all
-
 use strict;
 use warnings;
 use lib '/usr/local/cpanel';
-use Whostmgr::ACLS();
 use Cpanel::JSON();
 use CGI();
-
-Whostmgr::ACLS::init_acls();
 
 run() unless caller();
 
 sub run {
-    my $cgi = CGI->new();
     my $request_method = $ENV{REQUEST_METHOD} || 'GET';
 
-    # Check permissions
-    if (!Whostmgr::ACLS::hasroot()) {
+    # Get authenticated user
+    my $cpanel_user = $ENV{REMOTE_USER} || '';
+    unless ($cpanel_user) {
         if ($request_method eq 'POST') {
-            print_json_error('access_denied', 'Root access required');
+            print_json_error('not_authenticated', 'Authentication required');
         } else {
-            print_html_error('Access Denied', 'You do not have access to this plugin.');
+            print_html_error('Not Authenticated', 'You must be logged into cPanel.');
         }
         exit;
     }
 
     # Handle POST requests (API calls)
     if ($request_method eq 'POST') {
-        handle_api_request($cgi);
+        # Read POST data BEFORE creating CGI object
+        my $post_body = '';
+        if (!eof(STDIN)) {
+            local $/;
+            $post_body = <STDIN>;
+        }
+        handle_api_request_direct($cpanel_user, $post_body);
     } else {
+        # For GET requests, create CGI object
+        my $cgi = CGI->new();
+        my $mode = $cgi->param('mode') || '';
         # Handle GET requests (UI rendering)
-        render_ui();
+        # If called with mode=iframe, output the full HTML interface
+        if ($mode eq 'iframe') {
+            print "Content-type: text/html\r\n\r\n";
+            print_html_interface($cpanel_user);
+        } else {
+            render_ui($cpanel_user);
+        }
     }
 
     exit;
@@ -47,32 +56,39 @@ sub run {
 ###############################################################################
 
 sub write_audit_log {
-    my ($action, $details, $result) = @_;
+    my ($cpanel_user, $action, $details, $result) = @_;
 
     my $log_dir = '/var/log/wp_temp_accounts';
-    my $log_file = "$log_dir/whm.log";
 
-    # Ensure log directory exists
+    # Sanitize username for filename
+    my $safe_username = $cpanel_user;
+    $safe_username =~ s/[^a-zA-Z0-9_-]/_/g;
+
+    my $log_file = "$log_dir/cpanel_${safe_username}.log";
+
+    # Ensure log directory exists with world-writable permissions
     unless (-d $log_dir) {
-        mkdir($log_dir, 0750) or return;
-        chown 0, 0, $log_dir;
+        mkdir($log_dir, 0777) or return;
     }
 
     # Sanitize inputs for logging
+    $cpanel_user = sanitize_log_input($cpanel_user);
     $action = sanitize_log_input($action);
     $details = sanitize_log_input($details);
     $result = sanitize_log_input($result);
 
-    # Format: timestamp | action | details | result | remote_ip
+    # Format: timestamp | user | action | details | result | remote_ip
     my $timestamp = scalar localtime(time());
     my $remote_ip = $ENV{REMOTE_ADDR} || 'unknown';
-    my $log_entry = sprintf("[%s] %s | %s | %s | %s\n",
-        $timestamp, $action, $details, $result, $remote_ip);
+    my $log_entry = sprintf("[%s] %s | %s | %s | %s | %s\n",
+        $timestamp, $cpanel_user, $action, $details, $result, $remote_ip);
 
-    # Write to log file
+    # Write to log file (creates it if doesn't exist)
     if (open my $fh, '>>', $log_file) {
         print $fh $log_entry;
         close $fh;
+
+        # Set permissions so user can read/write their own log
         chmod 0640, $log_file;
     }
 }
@@ -125,23 +141,10 @@ sub sanitize_log_input {
 # API Request Handler
 ###############################################################################
 
-sub handle_api_request {
-    my ($cgi) = @_;
+sub handle_api_request_direct {
+    my ($cpanel_user, $body) = @_;
 
-    # Read request body with size limit
-    my $body = '';
-
-    # Check if CGI.pm already read the body
-    my $postdata = $cgi->param('POSTDATA');
-    if (defined $postdata && $postdata ne '') {
-        $body = $postdata;
-    } else {
-        # Read from STDIN directly
-        my $content_length = $ENV{CONTENT_LENGTH} || 0;
-        if ($content_length > 0) {
-            read(STDIN, $body, $content_length);
-        }
-    }
+    # Body is passed directly from run()
 
     # Handle empty body
     unless ($body && $body ne '') {
@@ -160,35 +163,29 @@ sub handle_api_request {
 
     # Route to appropriate handler
     if ($action eq 'health') {
-        print_json_success({ status => 'ok', uptime_sec => time() - $^T });
-    }
-    elsif ($action eq 'list_cpanel_accounts') {
-        my $accounts = list_cpanel_accounts();
-        print_json_success($accounts);
+        print_json_success({ status => 'ok', user => $cpanel_user });
     }
     elsif ($action eq 'scan_wordpress') {
-        my $account = $payload->{account} || '';
         my $force_scan = $payload->{force_scan} || 0;
-        my $sites = scan_wordpress($account, $force_scan);
+        my $sites = scan_wordpress($cpanel_user, $force_scan);
         print_json_success($sites);
     }
     elsif ($action eq 'load_cached_wordpress') {
-        my $account = $payload->{account} || '';
-        my $cached = load_cached_wordpress_scan($account);
+        my $cached = load_cached_wordpress_scan($cpanel_user);
         print_json_success($cached);
     }
     elsif ($action eq 'create_temp_user') {
-        create_temp_user($payload);
+        create_temp_user($cpanel_user, $payload);
     }
     elsif ($action eq 'list_temp_users') {
-        my $users = list_temp_users($payload->{site_path}, $payload->{cpanel_user});
+        my $users = list_temp_users($cpanel_user, $payload->{site_path});
         print_json_success($users);
     }
     elsif ($action eq 'delete_temp_user') {
-        delete_temp_user($payload);
+        delete_temp_user($cpanel_user, $payload);
     }
     elsif ($action eq 'list_all_temp_users') {
-        my $all_users = list_all_temp_users();
+        my $all_users = list_all_temp_users($cpanel_user);
         print_json_success($all_users);
     }
     else {
@@ -201,47 +198,50 @@ sub handle_api_request {
 ###############################################################################
 
 sub render_ui {
-    # Use Template Toolkit for proper WHM integration
-    use Cpanel::Template ();
+    my ($cpanel_user) = @_;
+
+    # This function should not be called when properly configured
+    # The template should be loaded directly by cPanel
+    # If we get here, it means something is misconfigured
 
     print "Content-type: text/html\r\n\r\n";
-
-    Cpanel::Template::process_template(
-        'whostmgr',
-        {
-            'template_file' => 'wp_temp_accounts/wp_temp_accounts.tmpl',
-            'print'         => 1,
-        }
-    );
+    print qq{
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Configuration Error</title>
+        </head>
+        <body>
+            <h1>Configuration Error</h1>
+            <p>The cPanel plugin is not properly configured.</p>
+            <p>The plugin should be accessed via the template file (index.tmpl), not the CGI directly.</p>
+            <p>Please ensure install.json points to "wp_temp_accounts/index.tmpl" and re-register the plugin.</p>
+            <p>Current user: $cpanel_user</p>
+        </body>
+        </html>
+    };
 
     return;
+}
 
-    # Old heredoc code below - keeping for reference
-    print <<'HTML_DISABLED';
-<style type="text/css">
-        /* WHM-Integrated Plugin Styling */
-        .container { max-width: 100%; }
-        .whm-section-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 20px;
-            padding-bottom: 15px;
-            border-bottom: 2px solid #e3e8ee;
-        }
-        .whm-section-header h2 {
-            font-size: 24px;
-            font-weight: 300;
-            color: #4a5568;
-            margin: 0;
-        }
-        .whm-main-content {
-            background: white;
-            padding: 20px;
-            border-radius: 4px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-        }
-        .status {
+sub print_html_interface {
+    my ($cpanel_user) = @_;
+
+    # Output the complete HTML interface directly
+    print <<'HTML_START';
+<!DOCTYPE html>
+<html>
+<head>
+    <title>WordPress Temporary Accounts</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style type="text/css">
+        /* Plugin-specific styling */
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; padding: 20px; background: #f5f7fa; }
+        .wp-temp-container { max-width: 1200px; margin: 0 auto; }
+        .header { background: white; padding: 20px; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .header h1 { margin: 0 0 10px 0; color: #333; font-size: 24px; }
+        .status-badge {
             display: inline-block;
             padding: 6px 12px;
             border-radius: 3px;
@@ -250,179 +250,231 @@ sub render_ui {
             text-transform: uppercase;
             letter-spacing: 0.5px;
         }
-        .status.ok { background: #48bb78; color: white; }
-        .status.error { background: #f56565; color: white; }
-        .card {
-            background: #f7fafc;
-            padding: 20px;
-            border-radius: 4px;
+        .status-ok { background: #48bb78; color: white; }
+        .status-error { background: #f56565; color: white; }
+
+        /* Tabs */
+        .tabs {
+            display: flex;
+            gap: 10px;
             margin-bottom: 20px;
-            border: 1px solid #e2e8f0;
+            background: white;
+            padding: 10px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         }
-        .card h2 {
+        .tab-button {
+            padding: 10px 20px;
+            background: #e2e8f0;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: all 0.3s;
+        }
+        .tab-button:hover { background: #cbd5e0; }
+        .tab-button.active {
+            background: #4299e1;
+            color: white;
+        }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+
+        .wp-card {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .wp-card h2 {
             color: #2d3748;
             font-size: 18px;
-            margin-bottom: 15px;
-            font-weight: 600;
+            margin: 0 0 15px 0;
             padding-bottom: 10px;
             border-bottom: 1px solid #e2e8f0;
         }
-        .form-group { margin-bottom: 20px; }
-        label {
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+        .form-group label {
             display: block;
-            margin-bottom: 8px;
-            color: #525f7f;
+            margin-bottom: 5px;
+            font-weight: 500;
+            color: #4a5568;
+        }
+        .form-group input, .form-group select {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid #cbd5e0;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        .form-group input:focus, .form-group select:focus {
+            outline: none;
+            border-color: #4299e1;
+            box-shadow: 0 0 0 3px rgba(66,153,225,0.1);
+        }
+
+        .btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .btn-primary {
+            background: #4299e1;
+            color: white;
+        }
+        .btn-primary:hover { background: #3182ce; }
+        .btn-danger {
+            background: #f56565;
+            color: white;
+        }
+        .btn-danger:hover { background: #e53e3e; }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #e2e8f0;
+        }
+        th {
+            background: #f7fafc;
             font-weight: 600;
+            color: #4a5568;
             font-size: 12px;
             text-transform: uppercase;
             letter-spacing: 0.5px;
         }
-        select, input {
-            width: 100%;
-            padding: 11px 16px;
-            border: 1px solid #cad1d7;
-            border-radius: 4px;
-            font-size: 13px;
-            color: #3c4858;
-            transition: all 0.15s ease;
-            background: white;
-        }
-        select:focus, input:focus {
-            outline: none;
-            border-color: #1d8cf8;
-            box-shadow: 0 0 0 3px rgba(29, 140, 248, 0.1);
-        }
-        button {
-            background: #4299e1;
-            color: white;
-            border: 1px solid #3182ce;
-            padding: 8px 16px;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 14px;
-            font-weight: 500;
-            transition: background 0.2s ease;
-        }
-        button:hover {
-            background: #3182ce;
-        }
-        button:disabled {
-            background: #cbd5e0;
-            border-color: #a0aec0;
-            cursor: not-allowed;
-            opacity: 0.6;
-        }
-        .btn-danger {
-            background: #e53e3e;
-            border-color: #c53030;
-        }
-        .btn-danger:hover {
-            background: #c53030;
-        }
+        tr:hover { background: #f7fafc; }
+
         #loading {
             display: none;
-            position: fixed;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            background: white;
-            padding: 40px;
+            padding: 20px;
+            text-align: center;
+            background: #fff;
             border-radius: 8px;
-            box-shadow: 0 15px 35px rgba(50, 50, 93, 0.2), 0 5px 15px rgba(0, 0, 0, 0.17);
-            z-index: 1000;
-            font-weight: 600;
-            color: #1d8cf8;
+            margin: 20px 0;
         }
         #error-message {
             display: none;
             background: #fff5f5;
             color: #c53030;
-            padding: 16px;
+            padding: 15px;
             border-radius: 4px;
             margin-bottom: 20px;
             border-left: 4px solid #f56565;
-            font-weight: 500;
         }
-        table {
+
+        /* Password Modal */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
             width: 100%;
-            border-collapse: collapse;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+        .modal.show { display: flex; }
+        .modal-content {
             background: white;
+            padding: 30px;
+            border-radius: 8px;
+            max-width: 500px;
+            width: 90%;
         }
-        th, td {
-            padding: 14px 16px;
-            text-align: left;
-            border-bottom: 1px solid #e3e3e3;
-        }
-        th {
-            background: #f7f9fc;
+        .modal-header {
+            font-size: 20px;
             font-weight: 600;
-            color: #525f7f;
-            text-transform: uppercase;
-            font-size: 11px;
-            letter-spacing: 0.5px;
+            margin-bottom: 20px;
         }
-        tr:hover { background: #f8f9fb; }
-        tr:last-child td { border-bottom: none; }
-</style>
+        .password-display {
+            background: #f7fafc;
+            padding: 15px;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 16px;
+            margin: 15px 0;
+            word-break: break-all;
+        }
+    </style>
+</head>
+<body>
+    <div class="wp-temp-container">
+        <div class="header">
+            <h1>WordPress Temporary Accounts</h1>
+            <p>User: <strong>
+HTML_START
+    print $cpanel_user;
+    print <<'HTML_END';
+</strong></p>
+            <span id="health-status" class="status-badge status-ok">System: OK</span>
+        </div>
 
-<div class="container">
-    <div class="whm-section-header">
-        <h2>WordPress Temporary Accounts</h2>
-        <div id="health-status" class="status ok">System: OK</div>
-    </div>
+        <div id="error-message"></div>
+        <div id="loading">Loading...</div>
 
-    <div id="error-message"></div>
-    <div id="loading">Loading...</div>
+        <!-- Tab Navigation -->
+        <div class="tabs">
+            <button class="tab-button active" onclick="showTab('create')">Create User</button>
+            <button class="tab-button" onclick="showTab('manage')">Manage All Users</button>
+        </div>
 
-    <div class="whm-main-content">
-        <!-- Step 1: Select cPanel Account -->
-        <section class="card">
-            <h2>1. Select cPanel Account</h2>
-            <div class="form-group">
-                    <label for="cpanel-account">cPanel Account:</label>
-                    <select id="cpanel-account">
-                        <option value="">Loading accounts...</option>
-                    </select>
+        <!-- Create User Tab -->
+        <div id="create-tab" class="tab-content active">
+            <div class="wp-card">
+                <h2>1. Select WordPress Site</h2>
+                <div class="form-group">
+                    <button id="scan-btn" class="btn btn-primary" onclick="scanWordPress()">Scan for WordPress Sites</button>
                 </div>
-            <button id="scan-btn" disabled>Scan for WordPress</button>
-        </section>
-
-        <!-- Step 2: Select WordPress Installation -->
-        <section class="card" id="wp-installs-section" style="display:none;">
-            <h2>2. Select WordPress Installation</h2>
-            <div class="form-group">
+                <div class="form-group" id="site-select-group" style="display:none;">
                     <label for="wp-site">WordPress Site:</label>
-                    <select id="wp-site">
-                        <option value="">-- Select a WordPress site --</option>
+                    <select id="wp-site" onchange="siteSelected()">
+                        <option value="">-- Select a site --</option>
                     </select>
                 </div>
-            <button id="load-users-btn" disabled>Load Users</button>
-        </section>
+            </div>
 
-        <!-- Step 3: Create Temporary User -->
-        <section class="card" id="create-user-section" style="display:none;">
-            <h2>3. Create Temporary User</h2>
-            <div class="form-group">
+            <div class="wp-card" id="create-form" style="display:none;">
+                <h2>2. Create Temporary User</h2>
+                <div class="form-group">
                     <label for="username">Username:</label>
                     <input type="text" id="username" placeholder="temp_admin_123">
                 </div>
-            <div class="form-group">
+                <div class="form-group">
                     <label for="email">Email:</label>
                     <input type="email" id="email" placeholder="temp@example.com">
                 </div>
-            <div class="form-group">
+                <div class="form-group">
                     <label for="days">Expiration (days):</label>
-                    <input type="number" id="days" value="7" min="1" max="365">
+                    <input type="number" id="days" value="7" min="0.0208" max="365" step="0.0001">
                 </div>
-            <button id="create-btn">Create Temporary User</button>
-        </section>
+                <button class="btn btn-primary" onclick="createUser()">Create Temporary User</button>
+            </div>
+        </div>
 
-        <!-- Step 4: Manage Users -->
-        <section class="card" id="users-section" style="display:none;">
-            <h2>4. Temporary Users</h2>
-            <table>
+        <!-- Manage Users Tab -->
+        <div id="manage-tab" class="tab-content">
+            <div class="wp-card">
+                <h2>All Temporary Users</h2>
+                <div class="form-group">
+                    <input type="text" id="filter-input" placeholder="Filter users..." onkeyup="filterUsers()">
+                </div>
+                <table>
                     <thead>
                         <tr>
+                            <th>Site</th>
                             <th>Username</th>
                             <th>Email</th>
                             <th>Expires</th>
@@ -430,20 +482,54 @@ sub render_ui {
                         </tr>
                     </thead>
                     <tbody id="users-table">
-                        <tr><td colspan="4">No temporary users found</td></tr>
+                        <tr><td colspan="5">Click "Load All Users" to view temporary users</td></tr>
                     </tbody>
                 </table>
-        </section>
-        </div><!-- whm-main-content -->
-    </div><!-- container -->
+                <button class="btn btn-primary" onclick="loadAllUsers()">Load All Users</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Password Modal -->
+    <div id="password-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">User Created Successfully</div>
+            <p>Username: <strong id="modal-username"></strong></p>
+            <p>Password:</p>
+            <div class="password-display" id="modal-password"></div>
+            <button class="btn btn-primary" onclick="copyPassword()">Copy Password</button>
+            <button class="btn" onclick="closeModal()">Close</button>
+        </div>
+    </div>
 
     <script>
-        // State
-        let state = { selectedAccount: null, selectedSite: null };
+        let selectedSite = null;
+        let cpanelUser = '
+HTML_END
+    print $cpanel_user;
+    print <<'HTML_SCRIPT';
+';
 
-        // API Communication
+        // Tab switching
+        function showTab(tab) {
+            document.querySelectorAll('.tab-button').forEach(btn => btn.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+
+            if (tab === 'create') {
+                document.querySelector('.tab-button:nth-child(1)').classList.add('active');
+                document.getElementById('create-tab').classList.add('active');
+            } else {
+                document.querySelector('.tab-button:nth-child(2)').classList.add('active');
+                document.getElementById('manage-tab').classList.add('active');
+                loadAllUsers();
+            }
+        }
+
+        // API call helper
         async function callAPI(action, payload = {}) {
-            showLoading();
+            const loading = document.getElementById('loading');
+            loading.style.display = 'block';
+
             try {
                 const response = await fetch(window.location.pathname, {
                     method: 'POST',
@@ -451,19 +537,19 @@ sub render_ui {
                     body: JSON.stringify({ action, payload })
                 });
                 const data = await response.json();
-                hideLoading();
-                if (!data.ok) throw new Error(data.error?.message || 'Unknown error');
+                loading.style.display = 'none';
+
+                if (!data.ok) {
+                    throw new Error(data.error?.message || 'Unknown error');
+                }
                 return data.data;
             } catch (error) {
-                hideLoading();
+                loading.style.display = 'none';
                 showError(error.message);
                 throw error;
             }
         }
 
-        // UI Helpers
-        function showLoading() { document.getElementById('loading').style.display = 'block'; }
-        function hideLoading() { document.getElementById('loading').style.display = 'none'; }
         function showError(msg) {
             const el = document.getElementById('error-message');
             el.textContent = msg;
@@ -471,71 +557,28 @@ sub render_ui {
             setTimeout(() => el.style.display = 'none', 5000);
         }
 
-        // Load cPanel Accounts
-        async function loadAccounts() {
-            try {
-                const accounts = await callAPI('list_cpanel_accounts');
-                const select = document.getElementById('cpanel-account');
-                select.innerHTML = '<option value="">-- Select an account --</option>';
-                accounts.forEach(acc => {
-                    const opt = document.createElement('option');
-                    opt.value = acc.user;
-                    opt.textContent = `${acc.user} (${acc.domain})`;
-                    select.appendChild(opt);
-                });
-                select.disabled = false;
-            } catch (error) {
-                console.error('Failed to load accounts:', error);
-            }
-        }
-
-        // Scan for WordPress
         async function scanWordPress() {
-            const account = document.getElementById('cpanel-account').value;
-            if (!account) return;
-
-            state.selectedAccount = account;
-            const sites = await callAPI('scan_wordpress', { account });
-
+            const sites = await callAPI('scan_wordpress', { force_scan: true });
             const select = document.getElementById('wp-site');
             select.innerHTML = '<option value="">-- Select a site --</option>';
+
             sites.forEach(site => {
                 const opt = document.createElement('option');
                 opt.value = site.path;
                 opt.textContent = `${site.domain} (${site.path})`;
                 select.appendChild(opt);
             });
-            select.disabled = false;
-            document.getElementById('wp-installs-section').style.display = 'block';
+
+            document.getElementById('site-select-group').style.display = 'block';
         }
 
-        // Load Users
-        async function loadUsers() {
-            const sitePath = document.getElementById('wp-site').value;
-            if (!sitePath) return;
-
-            state.selectedSite = sitePath;
-            document.getElementById('create-user-section').style.display = 'block';
-            document.getElementById('users-section').style.display = 'block';
-
-            const users = await callAPI('list_temp_users', { site_path: sitePath });
-            const tbody = document.getElementById('users-table');
-
-            if (users.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="4">No temporary users found</td></tr>';
-            } else {
-                tbody.innerHTML = users.map(u => `
-                    <tr>
-                        <td>${u.username}</td>
-                        <td>${u.email}</td>
-                        <td>${u.expires}</td>
-                        <td><button class="btn-danger" onclick="deleteUser('${u.username}')">Delete</button></td>
-                    </tr>
-                `).join('');
+        function siteSelected() {
+            selectedSite = document.getElementById('wp-site').value;
+            if (selectedSite) {
+                document.getElementById('create-form').style.display = 'block';
             }
         }
 
-        // Create User
         async function createUser() {
             const username = document.getElementById('username').value;
             const email = document.getElementById('email').value;
@@ -546,81 +589,93 @@ sub render_ui {
                 return;
             }
 
-            await callAPI('create_temp_user', {
-                cpanel_user: state.selectedAccount,
-                site_path: state.selectedSite,
+            const result = await callAPI('create_temp_user', {
+                cpanel_user: cpanelUser,
+                site_path: selectedSite,
                 username,
                 email,
-                days: parseInt(days)
+                days: parseFloat(days)
             });
 
+            // Show password modal
+            document.getElementById('modal-username').textContent = result.username;
+            document.getElementById('modal-password').textContent = result.password;
+            document.getElementById('password-modal').classList.add('show');
+
+            // Clear form
             document.getElementById('username').value = '';
             document.getElementById('email').value = '';
-            loadUsers();
         }
 
-        // Delete User
-        async function deleteUser(username) {
+        function copyPassword() {
+            const password = document.getElementById('modal-password').textContent;
+            navigator.clipboard.writeText(password);
+            alert('Password copied to clipboard!');
+        }
+
+        function closeModal() {
+            document.getElementById('password-modal').classList.remove('show');
+        }
+
+        async function loadAllUsers(forceRefresh = false) {
+            try {
+                const users = await callAPI('list_all_temp_users');
+                const tbody = document.getElementById('users-table');
+
+                if (users.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="5">No temporary users found</td></tr>';
+                } else {
+                    tbody.innerHTML = users.map(u => `
+                        <tr>
+                            <td>${u.site_domain}</td>
+                            <td>${u.username}</td>
+                            <td>${u.email}</td>
+                            <td>${u.expires}</td>
+                            <td><button class="btn btn-danger" onclick="deleteUser('${u.site_path}', '${u.username}')">Delete</button></td>
+                        </tr>
+                    `).join('');
+                }
+            } catch (error) {
+                console.error('Failed to load users:', error);
+            }
+        }
+
+        async function deleteUser(sitePath, username) {
             if (!confirm(`Delete user ${username}?`)) return;
+
             await callAPI('delete_temp_user', {
-                cpanel_user: state.selectedAccount,
-                site_path: state.selectedSite,
+                cpanel_user: cpanelUser,
+                site_path: sitePath,
                 username
             });
-            loadUsers();
+
+            loadAllUsers();
         }
 
-        // Event Listeners
-        document.getElementById('cpanel-account').addEventListener('change', function() {
-            document.getElementById('scan-btn').disabled = !this.value;
-        });
-        document.getElementById('scan-btn').addEventListener('click', scanWordPress);
-        document.getElementById('wp-site').addEventListener('change', function() {
-            document.getElementById('load-users-btn').disabled = !this.value;
-        });
-        document.getElementById('load-users-btn').addEventListener('click', loadUsers);
-        document.getElementById('create-btn').addEventListener('click', createUser);
+        function filterUsers() {
+            const filter = document.getElementById('filter-input').value.toLowerCase();
+            const rows = document.querySelectorAll('#users-table tr');
 
-        // Initialize
-        loadAccounts();
+            rows.forEach(row => {
+                const text = row.textContent.toLowerCase();
+                row.style.display = text.includes(filter) ? '' : 'none';
+            });
+        }
+
+        // Check health on load
         callAPI('health').catch(() => {
             document.getElementById('health-status').textContent = 'System: Error';
-            document.getElementById('health-status').className = 'status error';
+            document.getElementById('health-status').className = 'status-badge status-error';
         });
     </script>
-HTML_DISABLED
-    # End of old heredoc code
+</body>
+</html>
+HTML_SCRIPT
 }
 
 ###############################################################################
 # Core Functions
 ###############################################################################
-
-sub list_cpanel_accounts {
-    my @accounts;
-
-    # Read /etc/trueuserdomains
-    if (open my $fh, '<', '/etc/trueuserdomains') {
-        while (my $line = <$fh>) {
-            chomp $line;
-            next unless $line;
-            my ($domain, $user) = split /:\s*/, $line, 2;
-            next unless $user;
-
-            # Get user info
-            my $homedir = (getpwnam($user))[7] || "/home/$user";
-
-            push @accounts, {
-                user => $user,
-                domain => $domain,
-                homedir => $homedir
-            };
-        }
-        close $fh;
-    }
-
-    return \@accounts;
-}
 
 ###############################################################################
 # WordPress Scan Caching
@@ -630,7 +685,6 @@ sub get_cache_dir {
     my $cache_dir = '/var/cache/wp_temp_accounts';
     unless (-d $cache_dir) {
         mkdir($cache_dir, 0750) or return undef;
-        chown 0, 0, $cache_dir;
     }
     return $cache_dir;
 }
@@ -701,19 +755,18 @@ sub load_cached_wordpress_scan {
 }
 
 sub scan_wordpress {
-    my ($account, $force_scan) = @_;
-    return [] unless $account;
+    my ($cpanel_user, $force_scan) = @_;
 
     # Try to load cached results if not forcing a scan
     unless ($force_scan) {
-        my $cached = load_cached_wordpress_scan($account);
+        my $cached = load_cached_wordpress_scan($cpanel_user);
         if ($cached && @$cached) {
             return $cached;
         }
     }
 
     # Perform actual scan
-    my $homedir = (getpwnam($account))[7];
+    my $homedir = (getpwnam($cpanel_user))[7];
     return [] unless $homedir && -d $homedir;
 
     my @sites;
@@ -733,7 +786,7 @@ sub scan_wordpress {
     my %seen_paths;
     my @unique_sites;
     foreach my $site (@sites) {
-        # Use Cwd::realpath or Cwd::abs_path to resolve symlinks
+        # Use Cwd::realpath to resolve symlinks
         use Cwd 'realpath';
         my $real_path = realpath($site->{path}) || $site->{path};
 
@@ -743,7 +796,7 @@ sub scan_wordpress {
     }
 
     # Cache the results
-    save_cached_wordpress_scan($account, \@unique_sites);
+    save_cached_wordpress_scan($cpanel_user, \@unique_sites);
 
     return \@unique_sites;
 }
@@ -823,8 +876,8 @@ sub extract_site_url {
             if ($line =~ /define\s*\(\s*['"](?:WP_SITEURL|WP_HOME)['"]\s*,\s*['"]([^'"]+)['"]/) {
                 close $fh;
                 my $url = $1;
-                $url =~ s|^https?://||;  # Remove protocol
-                $url =~ s|/$||;  # Remove trailing slash
+                $url =~ s|^https?://||;
+                $url =~ s|/$||;
                 return $url;
             }
         }
@@ -835,16 +888,15 @@ sub extract_site_url {
 }
 
 sub create_temp_user {
-    my ($payload) = @_;
+    my ($cpanel_user, $payload) = @_;
 
-    my $cpanel_user = $payload->{cpanel_user} || '';
     my $site_path = $payload->{site_path} || '';
     my $username = $payload->{username} || '';
     my $email = $payload->{email} || '';
     my $days = $payload->{days} || 7;
 
     # Validate presence
-    unless ($cpanel_user && $site_path && $username && $email) {
+    unless ($site_path && $username && $email) {
         print_json_error('missing_params', 'Missing required parameters');
         return;
     }
@@ -867,53 +919,52 @@ sub create_temp_user {
         return;
     }
 
-    # Validate site_path is under the account's homedir
+    # Validate site_path is under the user's homedir
     unless (validate_site_path($site_path, $cpanel_user)) {
-        print_json_error('invalid_path', 'Invalid or unauthorized site path');
+        print_json_error('invalid_path', 'Invalid site path - must be under your home directory');
         return;
     }
 
     # Generate password
     my $password = generate_password();
 
-    # Get WP-CLI path
-    my $wp = get_wp_cli_path();
-
-    # Create user with WP-CLI (run as cPanel user, not root)
+    # Create user with WP-CLI
+    # Note: Running as cPanel user directly (no sudo needed in cPanel context)
     my $expires = time() + ($days * 86400);
-    my $cmd = sprintf('%s user create %s %s --role=administrator --user_pass=%s --path="%s" 2>&1',
-        $wp, quotemeta($username), quotemeta($email), quotemeta($password), $site_path);
-    my ($output, $exit_code) = run_wp_cli($cmd, $cpanel_user);
+    my $wp = get_wp_cli_path();
+    my $cmd = qq{$wp user create "$username" "$email" --role=administrator --user_pass="$password" --path="$site_path" 2>&1};
+    my ($output, $exit_code) = run_wp_cli($cmd);
 
     if ($exit_code != 0) {
-        write_audit_log('CREATE_USER_FAILED', "user=$username site=$site_path", "error: $output");
+        write_audit_log($cpanel_user, 'CREATE_USER_FAILED', "user=$username site=$site_path", "error: $output");
         print_json_error('wp_cli_error', "Failed to create user: $output");
         return;
     }
 
-    # Add expiration meta using wp user meta add (run as cPanel user)
+    # Add expiration meta using wp user meta add (safer than update for new fields)
+    # Use format: wp user meta add <user> <key> <value>
     my $meta1_cmd = sprintf('%s user meta add %s wp_temp_user 1 --path="%s" 2>&1',
         $wp, quotemeta($username), $site_path);
-    my ($meta1_output, $meta1_exit) = run_wp_cli($meta1_cmd, $cpanel_user);
+    my ($meta1_output, $meta1_exit) = run_wp_cli($meta1_cmd);
 
     my $meta2_cmd = sprintf('%s user meta add %s wp_temp_expires %d --path="%s" 2>&1',
         $wp, quotemeta($username), $expires, $site_path);
-    my ($meta2_output, $meta2_exit) = run_wp_cli($meta2_cmd, $cpanel_user);
+    my ($meta2_output, $meta2_exit) = run_wp_cli($meta2_cmd);
 
     # Log metadata updates with the actual commands
-    write_audit_log('META_ADD', "user=$username cmd=$meta1_cmd", "exit=$meta1_exit output=$meta1_output");
-    write_audit_log('META_ADD', "user=$username cmd=$meta2_cmd", "exit=$meta2_exit output=$meta2_output");
+    write_audit_log($cpanel_user, 'META_ADD', "user=$username cmd=$meta1_cmd", "exit=$meta1_exit output=$meta1_output");
+    write_audit_log($cpanel_user, 'META_ADD', "user=$username cmd=$meta2_cmd", "exit=$meta2_exit output=$meta2_output");
 
     # Verify metadata was set (defensive check)
     if ($meta1_exit != 0 || $meta2_exit != 0) {
-        write_audit_log('META_ADD_WARNING', "user=$username", "One or more metadata additions may have failed");
+        write_audit_log($cpanel_user, 'META_ADD_WARNING', "user=$username", "One or more metadata additions may have failed");
     }
 
     # Verify by reading back the metadata (use --format=json for reliable parsing)
     my $verify_cmd = sprintf('%s user meta list %s --format=json --path="%s" 2>&1',
         $wp, quotemeta($username), $site_path);
-    my $verify_output = run_wp_cli($verify_cmd, $cpanel_user);
-    write_audit_log('META_VERIFY', "user=$username cmd=$verify_cmd", "output=$verify_output");
+    my $verify_output = run_wp_cli($verify_cmd);
+    write_audit_log($cpanel_user, 'META_VERIFY', "user=$username cmd=$verify_cmd", "output=$verify_output");
 
     # Get site domain for registry
     my $site_domain = extract_domain_from_site_path($site_path, $cpanel_user);
@@ -930,7 +981,7 @@ sub create_temp_user {
     });
 
     # Log successful creation
-    write_audit_log('CREATE_USER_SUCCESS', "user=$username site=$site_path days=$days", "success");
+    write_audit_log($cpanel_user, 'CREATE_USER_SUCCESS', "user=$username site=$site_path days=$days", "success");
 
     print_json_success({
         username => $username,
@@ -941,37 +992,30 @@ sub create_temp_user {
 }
 
 sub list_temp_users {
-    my ($site_path, $cpanel_user) = @_;
+    my ($cpanel_user, $site_path) = @_;
     return [] unless $site_path && -d $site_path;
 
-    # Get WP-CLI path
-    my $wp = get_wp_cli_path();
+    # Validate path
+    my $homedir = (getpwnam($cpanel_user))[7];
+    return [] unless $site_path =~ /^\Q$homedir\E\//;
 
+    my $wp = get_wp_cli_path();
     my @users;
-    my $cmd = sprintf('%s user list --role=administrator --path="%s" --format=json 2>&1',
-        $wp, $site_path);
-    my ($output, $exit_code) = run_wp_cli($cmd, $cpanel_user);
+    my $cmd = qq{$wp user list --role=administrator --path="$site_path" --format=json 2>&1};
+    my ($output, $exit_code) = run_wp_cli($cmd);
 
     if ($exit_code == 0) {
-        my $all_users = eval { Cpanel::JSON::Load($output) };
-
-        # Return empty array if JSON parsing failed or result is not an array
-        if (!$all_users || ref($all_users) ne 'ARRAY') {
-            write_audit_log('LIST_USERS_JSON_ERROR', "site=$site_path", "Invalid JSON output: $output");
-            return [];
-        }
+        my $all_users = eval { Cpanel::JSON::Load($output) } || [];
 
         foreach my $user (@$all_users) {
             my $username = $user->{user_login};
-            my $is_temp_cmd = sprintf('%s user meta get %s wp_temp_user --path="%s" 2>&1',
-                $wp, quotemeta($username), $site_path);
-            my $is_temp = run_wp_cli($is_temp_cmd, $cpanel_user);
+            my $is_temp_cmd = qq{$wp user meta get "$username" wp_temp_user --path="$site_path" 2>&1};
+            my $is_temp = run_wp_cli($is_temp_cmd);
             chomp $is_temp;
 
             if ($is_temp eq '1') {
-                my $expires_cmd = sprintf('%s user meta get %s wp_temp_expires --path="%s" 2>&1',
-                    $wp, quotemeta($username), $site_path);
-                my $expires = run_wp_cli($expires_cmd, $cpanel_user);
+                my $expires_cmd = qq{$wp user meta get "$username" wp_temp_expires --path="$site_path" 2>&1};
+                my $expires = run_wp_cli($expires_cmd);
                 chomp $expires;
 
                 push @users, {
@@ -987,29 +1031,33 @@ sub list_temp_users {
 }
 
 sub delete_temp_user {
-    my ($payload) = @_;
+    my ($cpanel_user, $payload) = @_;
 
     my $site_path = $payload->{site_path} || '';
     my $username = $payload->{username} || '';
-    my $cpanel_user = $payload->{cpanel_user} || '';
 
     unless ($site_path && $username) {
         print_json_error('missing_params', 'Missing required parameters');
         return;
     }
 
-    # Get WP-CLI path
-    my $wp = get_wp_cli_path();
+    # Validate path
+    my $homedir = (getpwnam($cpanel_user))[7];
+    unless ($site_path =~ /^\Q$homedir\E\//) {
+        print_json_error('invalid_path', 'Invalid site path');
+        return;
+    }
 
-    my $cmd = sprintf('%s user delete %s --yes --path="%s" 2>&1',
-        $wp, quotemeta($username), $site_path);
-    my ($output, $exit_code) = run_wp_cli($cmd, $cpanel_user);
+    # Note: Running as cPanel user directly (no sudo needed in cPanel context)
+    my $wp = get_wp_cli_path();
+    my $cmd = qq{$wp user delete "$username" --yes --path="$site_path" 2>&1};
+    my ($output, $exit_code) = run_wp_cli($cmd);
 
     # Log the WP-CLI output for debugging
-    write_audit_log('DELETE_USER_ATTEMPT', "user=$username site=$site_path cmd=$cmd", "exit_code=$exit_code output=$output");
+    write_audit_log($cpanel_user, 'DELETE_USER_ATTEMPT', "user=$username site=$site_path cmd=$cmd", "exit_code=$exit_code output=$output");
 
     if ($exit_code != 0) {
-        write_audit_log('DELETE_USER_FAILED', "user=$username site=$site_path", "error: $output");
+        write_audit_log($cpanel_user, 'DELETE_USER_FAILED', "user=$username site=$site_path", "error: $output");
         print_json_error('wp_cli_error', "Failed to delete user: $output");
         return;
     }
@@ -1018,81 +1066,97 @@ sub delete_temp_user {
     remove_from_registry($cpanel_user, $site_path, $username);
 
     # Log successful deletion
-    write_audit_log('DELETE_USER_SUCCESS', "user=$username site=$site_path", "output: $output");
+    write_audit_log($cpanel_user, 'DELETE_USER_SUCCESS', "user=$username site=$site_path", "output: $output");
 
     print_json_success({ deleted => $username, wp_cli_output => $output });
 }
 
 sub list_all_temp_users {
-    # Scan ALL cPanel accounts and WordPress sites to find temp users
-    # This ensures accuracy even if registry is empty/out-of-sync
+    my ($cpanel_user) = @_;
 
-    # Get WP-CLI path
-    my $wp = get_wp_cli_path();
+    # Scan all WordPress sites for this cPanel user to find temp users
+    my $homedir = (getpwnam($cpanel_user))[7];
+    return [] unless $homedir && -d $homedir;
 
     my @all_temp_users;
+    my $wp = get_wp_cli_path();
 
-    # Get all cPanel accounts
-    my $accounts = list_cpanel_accounts();
+    # Get all WordPress sites for this user
+    my $sites = scan_wordpress($cpanel_user, 0);  # Use cache
 
-    foreach my $account (@$accounts) {
-        my $cpanel_user = $account->{user};
+    foreach my $site (@$sites) {
+        my $site_path = $site->{path};
+        my $site_domain = $site->{domain};
 
-        # Get all WordPress sites for this account (using cache)
-        my $sites = scan_wordpress($cpanel_user, 0);  # Use cache
+        # Query WordPress for users with temp metadata
+        my $cmd = qq{$wp user list --role=administrator --path="$site_path" --format=json 2>&1};
+        my ($output, $exit_code) = run_wp_cli($cmd);
 
-        foreach my $site (@$sites) {
-            my $site_path = $site->{path};
-            my $site_domain = $site->{domain};
+        if ($exit_code == 0) {
+            my $all_users = eval { Cpanel::JSON::Load($output) } || [];
 
-            # Query WordPress for users with temp metadata
-            my $cmd = sprintf('%s user list --role=administrator --path="%s" --format=json 2>&1',
-                $wp, $site_path);
-            my ($output, $exit_code) = run_wp_cli($cmd, $cpanel_user);
+            foreach my $user (@$all_users) {
+                my $username = $user->{user_login};
 
-            if ($exit_code == 0) {
-                my $all_users = eval { Cpanel::JSON::Load($output) };
+                # Check if this is a temp user
+                my $is_temp_cmd = qq{$wp user meta get "$username" wp_temp_user --path="$site_path" 2>&1};
+                my $is_temp = run_wp_cli($is_temp_cmd);
+                chomp $is_temp;
+                $is_temp =~ s/^\s+|\s+$//g;  # Trim whitespace
 
-                # Skip if JSON parsing failed or result is not an array
-                if (!$all_users || ref($all_users) ne 'ARRAY') {
-                    write_audit_log('LIST_USERS_JSON_ERROR', "site=$site_path account=$cpanel_user", "Invalid JSON output: $output");
-                    next;
-                }
+                # Log what we got for debugging
+                write_audit_log($cpanel_user, 'META_CHECK', "user=$username site=$site_path", "is_temp='$is_temp' length=" . length($is_temp));
 
-                foreach my $user (@$all_users) {
-                    my $username = $user->{user_login};
+                # Check if this is a temp user (be lenient with comparison)
+                if ($is_temp && $is_temp =~ /^1$/) {
+                    # Get expiration time
+                    my $expires_cmd = qq{$wp user meta get "$username" wp_temp_expires --path="$site_path" 2>&1};
+                    my $expires = run_wp_cli($expires_cmd);
+                    chomp $expires;
 
-                    # Check if this is a temp user
-                    my $is_temp_cmd = sprintf('%s user meta get %s wp_temp_user --path="%s" 2>&1',
-                        $wp, quotemeta($username), $site_path);
-                    my $is_temp = run_wp_cli($is_temp_cmd, $cpanel_user);
-                    chomp $is_temp;
-
-                    if ($is_temp eq '1') {
-                        # Get expiration time
-                        my $expires_cmd = sprintf('%s user meta get %s wp_temp_expires --path="%s" 2>&1',
-                            $wp, quotemeta($username), $site_path);
-                        my $expires = run_wp_cli($expires_cmd, $cpanel_user);
-                        chomp $expires;
-
-                        push @all_temp_users, {
-                            cpanel_account => $cpanel_user,
-                            site_domain => $site_domain,
-                            site_path => $site_path,
-                            username => $username,
-                            email => $user->{user_email},
-                            expires => $expires ? scalar localtime($expires) : 'Never'
-                        };
-                    }
+                    push @all_temp_users, {
+                        cpanel_account => $cpanel_user,
+                        site_domain => $site_domain,
+                        site_path => $site_path,
+                        username => $username,
+                        email => $user->{user_email},
+                        expires => $expires ? scalar localtime($expires) : 'Never'
+                    };
                 }
             }
         }
     }
 
-    # Sync the registry with what we found (keeps registry accurate)
-    sync_registry_with_wordpress(\@all_temp_users);
+    # Sync the registry with what we found (optional - keeps registry accurate)
+    sync_registry_with_wordpress($cpanel_user, \@all_temp_users);
 
     return \@all_temp_users;
+}
+
+sub sync_registry_with_wordpress {
+    my ($cpanel_user, $found_users) = @_;
+
+    my $registry = load_registry();
+
+    # Remove this user's entries from registry
+    my @other_users = grep { $_->{cpanel_account} ne $cpanel_user } @{$registry->{users}};
+
+    # Add back the users we actually found in WordPress
+    foreach my $user (@$found_users) {
+        # Convert formatted date back to timestamp if needed
+        # (we'll keep the formatted version for display, but store raw timestamp)
+        push @other_users, {
+            cpanel_account => $user->{cpanel_account},
+            site_domain => $user->{site_domain},
+            site_path => $user->{site_path},
+            username => $user->{username},
+            email => $user->{email},
+            expires => $user->{expires}  # Already formatted
+        };
+    }
+
+    $registry->{users} = \@other_users;
+    save_registry($registry);
 }
 
 ###############################################################################
@@ -1119,7 +1183,7 @@ sub load_registry {
 
         my $data = eval { Cpanel::JSON::Load($json) };
         if ($@) {
-            write_audit_log('REGISTRY_LOAD_ERROR', "error=$@", 'failed');
+            write_audit_log('', 'REGISTRY_LOAD_ERROR', "error=$@", 'failed');
             return { users => [] };
         }
 
@@ -1183,34 +1247,13 @@ sub remove_from_registry {
 }
 
 sub get_all_temp_users_from_registry {
+    my ($cpanel_user) = @_;
     my $registry = load_registry();
-    return $registry->{users} || [];
-}
 
-sub sync_registry_with_wordpress {
-    my ($wordpress_users) = @_;
+    # Filter to only this cPanel user's sites
+    my @filtered = grep { $_->{cpanel_account} eq $cpanel_user } @{$registry->{users}};
 
-    # Replace registry contents with what we found in WordPress
-    # This keeps the registry in sync with WordPress reality
-    my $registry = {
-        users => []
-    };
-
-    foreach my $user (@$wordpress_users) {
-        # Convert the formatted expires back to timestamp if possible
-        # (Since we formatted it above, we need to preserve it)
-        # For registry, we should store timestamps
-        push @{$registry->{users}}, {
-            cpanel_account => $user->{cpanel_account},
-            site_domain => $user->{site_domain},
-            site_path => $user->{site_path},
-            username => $user->{username},
-            email => $user->{email},
-            expires => $user->{expires}  # Already formatted as readable date
-        };
-    }
-
-    save_registry($registry);
+    return \@filtered;
 }
 
 sub extract_domain_from_site_path {
@@ -1221,7 +1264,7 @@ sub extract_domain_from_site_path {
 }
 
 ###############################################################################
-# WP-CLI Path Detection
+# WP-CLI Path Detection and Execution
 ###############################################################################
 
 my $wp_cli_path_cache;
@@ -1260,29 +1303,18 @@ sub get_wp_cli_path {
 }
 
 sub run_wp_cli {
-    my ($cmd, $cpanel_user) = @_;
+    my ($cmd) = @_;
 
     # WP-CLI detects CGI/web environment and refuses to run properly
     # We need to use env -i to start with a clean environment
     # and only set the variables WP-CLI needs (PATH, HOME, USER)
 
-    if ($cpanel_user) {
-        # WHM: Run as the cPanel user using sudo with clean environment
-        my $homedir = (getpwnam($cpanel_user))[7] || "/home/$cpanel_user";
-        $cmd = sprintf('sudo -u %s env -i PATH=/usr/local/bin:/usr/bin:/bin HOME=%s USER=%s %s',
-            quotemeta($cpanel_user),
-            quotemeta($homedir),
-            quotemeta($cpanel_user),
-            $cmd);
-    } else {
-        # cPanel: Run as current user with clean environment
-        my $current_user = $ENV{REMOTE_USER} || $ENV{USER} || 'nobody';
-        my $homedir = (getpwnam($current_user))[7] || $ENV{HOME} || "/home/$current_user";
-        $cmd = sprintf('env -i PATH=/usr/local/bin:/usr/bin:/bin HOME=%s USER=%s %s',
-            quotemeta($homedir),
-            quotemeta($current_user),
-            $cmd);
-    }
+    my $current_user = $ENV{REMOTE_USER} || $ENV{USER} || 'nobody';
+    my $homedir = (getpwnam($current_user))[7] || $ENV{HOME} || "/home/$current_user";
+    $cmd = sprintf('env -i PATH=/usr/local/bin:/usr/bin:/bin HOME=%s USER=%s %s',
+        quotemeta($homedir),
+        quotemeta($current_user),
+        $cmd);
 
     # Execute the WP-CLI command
     my $output = `$cmd`;
@@ -1305,12 +1337,14 @@ sub generate_password {
 
 sub print_json_success {
     my ($data) = @_;
+    print "X-No-SSI: 1\r\n";
     print "Content-Type: application/json\r\n\r\n";
     print Cpanel::JSON::Dump({ ok => Cpanel::JSON::true, data => $data });
 }
 
 sub print_json_error {
     my ($code, $message) = @_;
+    print "X-No-SSI: 1\r\n";
     print "Content-Type: application/json\r\n\r\n";
     print Cpanel::JSON::Dump({
         ok => Cpanel::JSON::false,
@@ -1325,3 +1359,4 @@ sub print_html_error {
 }
 
 1;
+

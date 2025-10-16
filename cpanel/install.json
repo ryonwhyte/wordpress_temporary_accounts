@@ -1,0 +1,12 @@
+[
+    {
+        "icon": "wp_temp_accounts.svg",
+        "group_id": "domains",
+        "order": 1000,
+        "name": "WordPress Temporary Accounts",
+        "type": "link",
+        "id": "wp_temp_accounts",
+        "uri": "wp_temp_accounts/index.live.pl",
+        "description": "Create and manage temporary WordPress administrator accounts with automatic expiration"
+    }
+]

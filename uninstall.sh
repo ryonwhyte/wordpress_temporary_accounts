@@ -50,9 +50,9 @@ echo ""
 log_info "Unregistering from WHM..."
 /usr/local/cpanel/bin/unregister_appconfig wp_temp_accounts 2>/dev/null || true
 
-# Unregister from cPanel
-log_info "Unregistering from cPanel..."
-/usr/local/cpanel/bin/unregister_appconfig wp_temp_accounts_cpanel 2>/dev/null || true
+# Note: cPanel plugin removal is handled by removing files and dynamicui configs
+# The install_plugin method doesn't require explicit unregistration
+log_info "Removing cPanel plugin registration..."
 
 # Remove AppConfigs
 log_info "Removing AppConfigs..."
@@ -62,10 +62,82 @@ rm -f /var/cpanel/apps/wp_temp_accounts_cpanel.conf
 # Remove WHM files
 log_info "Removing WHM files..."
 rm -rf /usr/local/cpanel/whostmgr/docroot/cgi/wp_temp_accounts
+rm -rf /usr/local/cpanel/whostmgr/docroot/templates/wp_temp_accounts
+rm -f /usr/local/cpanel/whostmgr/docroot/addon_plugins/wp_temp_accounts_icon.png
 
 # Remove cPanel files
 log_info "Removing cPanel files..."
+rm -rf /usr/local/cpanel/base/frontend/jupiter/wp_temp_accounts
 rm -rf /usr/local/cpanel/base/frontend/paper_lantern/wp_temp_accounts
+rm -rf /usr/local/cpanel/base/3rdparty/wp_temp_accounts
+
+# Remove from dynamicui registry
+log_info "Removing from dynamicui registry..."
+rm -f /usr/local/cpanel/base/frontend/jupiter/dynamicui/dynamicui_wp_temp_accounts.conf
+rm -f /usr/local/cpanel/base/frontend/jupiter/dynamicui/dynamicui_wptemp*.conf
+rm -f /usr/local/cpanel/base/frontend/jupiter/dynamicui/dynamicui_group_wordpress_tools.conf
+rm -f /usr/local/cpanel/base/frontend/paper_lantern/dynamicui/dynamicui_wp_temp_accounts.conf
+rm -f /usr/local/cpanel/base/frontend/paper_lantern/dynamicui/dynamicui_wptemp*.conf
+rm -f /usr/local/cpanel/base/frontend/paper_lantern/dynamicui/dynamicui_group_wordpress_tools.conf
+rm -f /usr/local/cpanel/base/frontend/jupiter/dynamicui/dynamicui_wp_temp_accounts.yaml
+rm -f /usr/local/cpanel/base/frontend/jupiter/config/dynamicui_local.yaml
+grep -l "wp_temp_accounts\|wordpress_tools" /usr/local/cpanel/base/frontend/jupiter/dynamicui/* 2>/dev/null | xargs rm -f 2>/dev/null || true
+grep -l "wp_temp_accounts\|wordpress_tools" /usr/local/cpanel/base/frontend/paper_lantern/dynamicui/* 2>/dev/null | xargs rm -f 2>/dev/null || true
+
+# Clear ALL caches comprehensively
+log_info "Clearing all cPanel caches..."
+
+# System-level caches
+rm -rf /usr/local/cpanel/base/frontend/jupiter/dynamicui_data/* 2>/dev/null || true
+rm -rf /usr/local/cpanel/base/frontend/jupiter/.dynamicui_cache 2>/dev/null || true
+rm -rf /usr/local/cpanel/base/frontend/jupiter/.cpanelcache/* 2>/dev/null || true
+rm -rf /usr/local/cpanel/base/frontend/paper_lantern/.cpanelcache/* 2>/dev/null || true
+
+# User-level caches for ALL users
+for userdir in /home/*; do
+    if [ -d "$userdir/.cpanel" ]; then
+        rm -rf "$userdir/.cpanel/caches/dynamicui/"* 2>/dev/null || true
+        rm -rf "$userdir/.cpanel/dynamicui/"* 2>/dev/null || true
+        rm -rf "$userdir/.cpanel/datastore/"* 2>/dev/null || true
+        rm -rf "$userdir/.cpanel/nvdata/"* 2>/dev/null || true
+    fi
+done
+
+# Root user cache
+rm -rf /root/.cpanel/caches/dynamicui/* 2>/dev/null || true
+
+# Other cache locations
+rm -rf /var/cpanel/dynamicui/* 2>/dev/null || true
+
+# Remove from feature lists if exists
+log_info "Removing from feature lists..."
+/usr/local/cpanel/bin/manage_features remove wp_temp_accounts 2>/dev/null || true
+
+# Rebuild dynamicui after removal
+log_info "Rebuilding dynamicui..."
+if [ -x /usr/local/cpanel/scripts/build_jupiter_dynamicui ]; then
+    /usr/local/cpanel/scripts/build_jupiter_dynamicui
+fi
+
+# Remove log directory
+log_info "Removing log directory..."
+rm -rf /var/log/wp_temp_accounts
+
+# Remove cache directory
+log_info "Removing cache directory..."
+rm -rf /var/cache/wp_temp_accounts
+
+# Remove cleanup script
+log_info "Removing cleanup script..."
+rm -f /usr/local/cpanel/scripts/wp_temp_accounts_cleanup
+
+# Remove log rotation configuration
+log_info "Removing log rotation configuration..."
+rm -f /etc/logrotate.d/wp_temp_accounts
+
+# Remove cron job
+log_info "Removing cron job..."
+crontab -l 2>/dev/null | grep -v "wp_temp_accounts_cleanup" | crontab - 2>/dev/null || true
 
 # Verify removal
 echo ""
@@ -88,8 +160,23 @@ if [ -d /usr/local/cpanel/whostmgr/docroot/cgi/wp_temp_accounts ]; then
     ERRORS=$((ERRORS + 1))
 fi
 
+if [ -d /usr/local/cpanel/base/frontend/jupiter/wp_temp_accounts ]; then
+    log_error "cPanel Jupiter directory still exists"
+    ERRORS=$((ERRORS + 1))
+fi
+
 if [ -d /usr/local/cpanel/base/frontend/paper_lantern/wp_temp_accounts ]; then
-    log_error "cPanel directory still exists"
+    log_error "cPanel Paper Lantern directory still exists"
+    ERRORS=$((ERRORS + 1))
+fi
+
+if [ -d /var/log/wp_temp_accounts ]; then
+    log_error "Log directory still exists"
+    ERRORS=$((ERRORS + 1))
+fi
+
+if [ -d /var/cache/wp_temp_accounts ]; then
+    log_error "Cache directory still exists"
     ERRORS=$((ERRORS + 1))
 fi
 
@@ -102,9 +189,13 @@ else
     exit 1
 fi
 
+# Rebuild sprites
+log_info "Rebuilding sprites..."
+/usr/local/cpanel/bin/rebuild_sprites 2>/dev/null || true
+
 # Restart services
 echo ""
-log_info "Restarting cpsrvd..."
+log_info "Restarting cpsrvd (hard restart)..."
 /scripts/restartsrv_cpsrvd --hard
 
 echo ""

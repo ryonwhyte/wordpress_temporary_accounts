@@ -1,0 +1,751 @@
+[%
+USE Whostmgr;
+USE JSON;
+
+# Handle right-to-left locales
+IF locale.get_html_dir_attr() == 'rtl';
+    SET rtl_bootstrap = Whostmgr.find_file_url('/3rdparty/bootstrap-rtl/optimized/dist/css/bootstrap-rtl.min.css');
+END;
+
+# Configure stylesheets
+SET styleSheets = [
+    rtl_bootstrap
+];
+
+# Wrap with WHM master template
+WRAPPER 'master_templates/master.tmpl'
+    header = locale.maketext("WordPress Temporary Accounts")
+    stylesheets = styleSheets,
+    theme='bootstrap';
+%]
+
+<style type="text/css">
+    /* WHM-Integrated Plugin Styling */
+    .wp-temp-container { max-width: 100%; }
+    .status-badge {
+        display: inline-block;
+        padding: 6px 12px;
+        border-radius: 3px;
+        font-size: 12px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    .status-ok { background: #48bb78; color: white; }
+    .status-error { background: #f56565; color: white; }
+    .wp-card {
+        background: #f7fafc;
+        padding: 20px;
+        border-radius: 4px;
+        margin-bottom: 20px;
+        border: 1px solid #e2e8f0;
+    }
+    .wp-card h2 {
+        color: #2d3748;
+        font-size: 18px;
+        margin-bottom: 15px;
+        font-weight: 600;
+        padding-bottom: 10px;
+        border-bottom: 1px solid #e2e8f0;
+    }
+    #loading {
+        display: none;
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        background: white;
+        padding: 40px;
+        border-radius: 8px;
+        box-shadow: 0 15px 35px rgba(50, 50, 93, 0.2);
+        z-index: 1000;
+        font-weight: 600;
+        color: #1d8cf8;
+    }
+    #error-message {
+        display: none;
+        background: #fff5f5;
+        color: #c53030;
+        padding: 16px;
+        border-radius: 4px;
+        margin-bottom: 20px;
+        border-left: 4px solid #f56565;
+        font-weight: 500;
+    }
+    /* Password Modal */
+    #password-modal {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.6);
+        z-index: 10000;
+        align-items: center;
+        justify-content: center;
+    }
+    #password-modal.show {
+        display: flex;
+    }
+    .modal-content {
+        background: white;
+        padding: 30px;
+        border-radius: 8px;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+        max-width: 500px;
+        width: 90%;
+    }
+    .modal-header {
+        font-size: 24px;
+        font-weight: 600;
+        color: #2d3748;
+        margin-bottom: 20px;
+        display: flex;
+        align-items: center;
+    }
+    .modal-header i {
+        color: #48bb78;
+        margin-right: 10px;
+    }
+    .password-display {
+        background: #f7fafc;
+        padding: 15px;
+        border-radius: 4px;
+        border: 2px solid #4299e1;
+        margin: 15px 0;
+        font-family: monospace;
+        font-size: 16px;
+        word-break: break-all;
+        position: relative;
+    }
+    .copy-btn {
+        background: #4299e1;
+        color: white;
+        border: none;
+        padding: 10px 20px;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 14px;
+        font-weight: 600;
+        margin-top: 10px;
+        transition: all 0.2s;
+    }
+    .copy-btn:hover {
+        background: #3182ce;
+    }
+    .copy-btn.copied {
+        background: #48bb78;
+    }
+    .modal-footer {
+        margin-top: 20px;
+        padding-top: 20px;
+        border-top: 1px solid #e2e8f0;
+    }
+    .modal-info {
+        background: #fff5f5;
+        padding: 12px;
+        border-radius: 4px;
+        border-left: 4px solid #f56565;
+        margin: 15px 0;
+        font-size: 13px;
+        color: #c53030;
+    }
+    /* Tab Navigation */
+    .tab-navigation {
+        display: flex;
+        gap: 10px;
+        margin-bottom: 20px;
+        border-bottom: 2px solid #e2e8f0;
+    }
+    .tab-button {
+        background: none;
+        border: none;
+        padding: 12px 24px;
+        cursor: pointer;
+        font-size: 14px;
+        font-weight: 600;
+        color: #718096;
+        border-bottom: 3px solid transparent;
+        transition: all 0.2s;
+        margin-bottom: -2px;
+    }
+    .tab-button:hover {
+        color: #4299e1;
+        background: #f7fafc;
+    }
+    .tab-button.active {
+        color: #4299e1;
+        border-bottom-color: #4299e1;
+    }
+    .tab-content {
+        display: none;
+    }
+    .tab-content.active {
+        display: block;
+    }
+</style>
+
+<div class="wp-temp-container">
+    <div class="row">
+        <div class="col-xs-12">
+            <div class="section-heading">
+                <h2>[% locale.maketext("WordPress Temporary Accounts") %]</h2>
+                <span id="health-status" class="status-badge status-ok">System: OK</span>
+            </div>
+        </div>
+    </div>
+
+    <div id="error-message"></div>
+    <div id="loading">Loading...</div>
+
+    <!-- Password Modal -->
+    <div id="password-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <i class="fa fa-check-circle"></i>
+                [% locale.maketext("User Created Successfully!") %]
+            </div>
+            <div>
+                <strong>[% locale.maketext("Username:") %]</strong>
+                <div id="modal-username" style="font-family: monospace; margin: 5px 0 15px 0;"></div>
+
+                <strong>[% locale.maketext("Password:") %]</strong>
+                <div class="password-display" id="modal-password"></div>
+
+                <button id="copy-password-btn" class="copy-btn">
+                    <i class="fa fa-copy"></i> [% locale.maketext("Copy Password") %]
+                </button>
+
+                <div class="modal-info">
+                    <i class="fa fa-exclamation-triangle"></i>
+                    [% locale.maketext("Save this password now! It cannot be retrieved later.") %]
+                </div>
+
+                <div style="margin-top: 10px; color: #718096; font-size: 13px;">
+                    <strong>[% locale.maketext("Expires:") %]</strong> <span id="modal-expires"></span>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button id="close-modal-btn" class="btn btn-success" style="width: 100%;">
+                    [% locale.maketext("I've Saved the Password") %]
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-xs-12">
+            <!-- Tab Navigation -->
+            <div class="tab-navigation">
+                <button class="tab-button active" data-tab="create-tab">
+                    <i class="fa fa-plus-circle"></i> [% locale.maketext("Create User") %]
+                </button>
+                <button class="tab-button" data-tab="manage-tab">
+                    <i class="fa fa-users"></i> [% locale.maketext("Manage All Users") %]
+                </button>
+            </div>
+
+            <!-- Tab: Create User -->
+            <div id="create-tab" class="tab-content active">
+                <!-- Step 1: Select cPanel Account -->
+            <div class="wp-card">
+                <h2>1. [% locale.maketext("Select cPanel Account") %]</h2>
+                <div class="form-group">
+                    <label for="cpanel-account">[% locale.maketext("cPanel Account:") %]</label>
+                    <select id="cpanel-account" class="form-control">
+                        <option value="">[% locale.maketext("Loading accounts...") %]</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Step 2: Select WordPress Installation -->
+            <div class="wp-card" id="wp-installs-section" style="display:none;">
+                <h2>2. [% locale.maketext("Select WordPress Installation") %]</h2>
+                <div class="form-group">
+                    <label for="wp-site">[% locale.maketext("WordPress Site:") %]</label>
+                    <select id="wp-site" class="form-control">
+                        <option value="">[% locale.maketext("Loading WordPress sites...") %]</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <button id="scan-btn" class="btn btn-primary">
+                        <i class="fa fa-refresh"></i> [% locale.maketext("Scan for WordPress") %]
+                    </button>
+                    <span id="cache-status" style="margin-left: 15px; color: #718096; font-size: 13px;"></span>
+                </div>
+            </div>
+
+            <!-- Step 3: Create Temporary User -->
+            <div class="wp-card" id="create-user-section" style="display:none;">
+                <h2>3. [% locale.maketext("Create Temporary User") %]</h2>
+                <div class="form-group">
+                    <label for="wp-temp-username">[% locale.maketext("Username:") %]</label>
+                    <input type="text" id="wp-temp-username" class="form-control" placeholder="temp_admin_123">
+                </div>
+                <div class="form-group">
+                    <label for="wp-temp-email">[% locale.maketext("Email:") %]</label>
+                    <input type="email" id="wp-temp-email" class="form-control" placeholder="temp@example.com">
+                </div>
+                <div class="form-group">
+                    <label for="wp-temp-expiration">[% locale.maketext("Expiration:") %]</label>
+                    <select id="wp-temp-expiration" class="form-control">
+                        <option value="0.0208">30 Minutes</option>
+                        <option value="0.0417">1 Hour</option>
+                        <option value="0.0833">2 Hours</option>
+                        <option value="0.25">6 Hours</option>
+                        <option value="0.5">12 Hours</option>
+                        <option value="1">1 Day</option>
+                        <option value="7" selected>7 Days</option>
+                        <option value="14">14 Days</option>
+                        <option value="30">30 Days</option>
+                    </select>
+                </div>
+                <button id="create-btn" class="btn btn-success">
+                    [% locale.maketext("Create Temporary User") %]
+                </button>
+            </div>
+            </div><!-- End create-tab -->
+
+            <!-- Tab: Manage All Users -->
+            <div id="manage-tab" class="tab-content">
+                <div class="wp-card">
+                    <h2>
+                        <i class="fa fa-users"></i> [% locale.maketext("All Temporary Users") %]
+                        <button id="refresh-all-users-btn" class="btn btn-primary btn-sm" style="float: right; margin-top: -5px;">
+                            <i class="fa fa-refresh"></i> [% locale.maketext("Refresh") %]
+                        </button>
+                    </h2>
+                    <div id="all-users-filter" style="margin-bottom: 15px;">
+                        <input type="text" id="filter-input" class="form-control" placeholder="[% locale.maketext('Filter by account, site, username, or email...') %]" style="max-width: 400px;">
+                    </div>
+                    <div id="all-users-container">
+                        <table class="table table-striped">
+                            <thead>
+                                <tr>
+                                    <th>[% locale.maketext("cPanel Account") %]</th>
+                                    <th>[% locale.maketext("WordPress Site") %]</th>
+                                    <th>[% locale.maketext("Username") %]</th>
+                                    <th>[% locale.maketext("Email") %]</th>
+                                    <th>[% locale.maketext("Expires") %]</th>
+                                    <th>[% locale.maketext("Actions") %]</th>
+                                </tr>
+                            </thead>
+                            <tbody id="all-users-table">
+                                <tr><td colspan="6" style="text-align: center; padding: 20px; color: #718096;">
+                                    <i class="fa fa-spinner fa-spin"></i> [% locale.maketext("Loading all temporary users...") %]
+                                </td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div><!-- End manage-tab -->
+        </div>
+    </div>
+</div>
+
+<script>
+    // State
+    let state = { selectedAccount: null, selectedSite: null };
+
+    // API Communication
+    async function callAPI(action, payload = {}) {
+        showLoading();
+        try {
+            const response = await fetch(window.location.pathname, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action, payload })
+            });
+            const data = await response.json();
+            hideLoading();
+            if (!data.ok) throw new Error(data.error?.message || 'Unknown error');
+            return data.data;
+        } catch (error) {
+            hideLoading();
+            showError(error.message);
+            throw error;
+        }
+    }
+
+    // UI Helpers
+    function showLoading() { document.getElementById('loading').style.display = 'block'; }
+    function hideLoading() { document.getElementById('loading').style.display = 'none'; }
+    function showError(msg) {
+        const el = document.getElementById('error-message');
+        el.textContent = msg;
+        el.style.display = 'block';
+        setTimeout(() => el.style.display = 'none', 5000);
+    }
+
+    // Load cPanel Accounts
+    async function loadAccounts() {
+        try {
+            const accounts = await callAPI('list_cpanel_accounts');
+            const select = document.getElementById('cpanel-account');
+            select.innerHTML = '<option value="">-- Select an account --</option>';
+            accounts.forEach(acc => {
+                const opt = document.createElement('option');
+                opt.value = acc.user;
+                opt.textContent = `${acc.user} (${acc.domain})`;
+                select.appendChild(opt);
+            });
+            select.disabled = false;
+        } catch (error) {
+            console.error('Failed to load accounts:', error);
+        }
+    }
+
+    // Load cached WordPress sites
+    async function loadCachedWordPress(account) {
+        try {
+            const sites = await callAPI('load_cached_wordpress', { account });
+            if (sites && sites.length > 0) {
+                populateWordPressSites(sites);
+                updateCacheStatus('Loaded from cache (click Scan to refresh)');
+                return true;
+            }
+        } catch (error) {
+            console.log('No cached data available');
+        }
+        return false;
+    }
+
+    // Scan for WordPress (force refresh)
+    async function scanWordPress() {
+        const account = document.getElementById('cpanel-account').value;
+        if (!account) return;
+
+        state.selectedAccount = account;
+
+        // Force scan (bypass cache)
+        const sites = await callAPI('scan_wordpress', { account, force_scan: 1 });
+        populateWordPressSites(sites);
+        updateCacheStatus(`Scanned ${sites.length} site(s) - cached for 1 hour`);
+    }
+
+    // Populate WordPress sites dropdown
+    function populateWordPressSites(sites) {
+        const select = document.getElementById('wp-site');
+        select.innerHTML = '<option value="">-- Select a site --</option>';
+
+        if (sites.length === 0) {
+            select.innerHTML = '<option value="">No WordPress installations found</option>';
+            select.disabled = true;
+        } else {
+            sites.forEach(site => {
+                const opt = document.createElement('option');
+                opt.value = site.path;
+                opt.textContent = `${site.domain} (${site.path})`;
+                select.appendChild(opt);
+            });
+            select.disabled = false;
+        }
+    }
+
+    // Update cache status message
+    function updateCacheStatus(message) {
+        const statusEl = document.getElementById('cache-status');
+        if (statusEl) {
+            statusEl.textContent = message;
+        }
+    }
+
+    // Load Users
+    // Stub for loadUsers - no longer needed with new tab-based UI
+    // Just refresh the all-users tab if it's active
+    async function loadUsers() {
+        // Refresh all users table instead
+        if (document.getElementById('manage-tab').classList.contains('active')) {
+            loadAllTempUsers();
+        }
+    }
+
+    // Create User
+    async function createUser() {
+        console.log('createUser called');
+
+        const usernameEl = document.getElementById('wp-temp-username');
+        const emailEl = document.getElementById('wp-temp-email');
+        const expirationEl = document.getElementById('wp-temp-expiration');
+
+        console.log('Elements:', usernameEl, emailEl, expirationEl);
+
+        if (!usernameEl || !emailEl || !expirationEl) {
+            showError('Form fields not found');
+            console.error('Missing elements!');
+            return;
+        }
+
+        console.log('usernameEl.value:', usernameEl.value, 'type:', typeof usernameEl.value);
+        console.log('emailEl.value:', emailEl.value, 'type:', typeof emailEl.value);
+        console.log('expirationEl.value:', expirationEl.value, 'type:', typeof expirationEl.value);
+
+        // Check if value property exists
+        if (usernameEl.value === undefined || emailEl.value === undefined || expirationEl.value === undefined) {
+            showError('Form fields not properly initialized - check console for details');
+            console.error('Value is undefined!', {
+                username: usernameEl.value,
+                email: emailEl.value,
+                expiration: expirationEl.value
+            });
+            return;
+        }
+
+        const username = (usernameEl.value || '').trim();
+        const email = (emailEl.value || '').trim();
+        const days = parseFloat(expirationEl.value || '7');
+
+        console.log('Processed values:', { username, email, days });
+
+        if (!username || !email) {
+            showError('Username and email are required');
+            return;
+        }
+
+        if (username.length < 3 || username.length > 60) {
+            showError('Username must be between 3 and 60 characters');
+            return;
+        }
+
+        if (!/^[A-Za-z0-9._-]+$/.test(username)) {
+            showError('Username can only contain letters, numbers, dots, underscores, and hyphens');
+            return;
+        }
+
+        if (!/^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/.test(email)) {
+            showError('Please enter a valid email address');
+            return;
+        }
+
+        const result = await callAPI('create_temp_user', {
+            cpanel_user: state.selectedAccount,
+            site_path: state.selectedSite,
+            username,
+            email,
+            days: days
+        });
+
+        // Show password to user in modal
+        if (result && result.password) {
+            showPasswordModal(result);
+        }
+
+        document.getElementById('wp-temp-username').value = '';
+        document.getElementById('wp-temp-email').value = '';
+    }
+
+    // Show Password Modal
+    function showPasswordModal(result) {
+        document.getElementById('modal-username').textContent = result.username;
+        document.getElementById('modal-password').textContent = result.password;
+        document.getElementById('modal-expires').textContent = result.expires || 'N/A';
+        document.getElementById('password-modal').classList.add('show');
+
+        // Store password for copy function
+        window.currentPassword = result.password;
+    }
+
+    // Copy Password to Clipboard
+    document.getElementById('copy-password-btn').addEventListener('click', function() {
+        const password = window.currentPassword;
+        if (!password) return;
+
+        // Use Clipboard API if available, fallback to textarea method
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(password).then(() => {
+                showCopySuccess();
+            }).catch(() => {
+                fallbackCopy(password);
+            });
+        } else {
+            fallbackCopy(password);
+        }
+    });
+
+    function fallbackCopy(text) {
+        const textarea = document.createElement('textarea');
+        textarea.value = text;
+        textarea.style.position = 'fixed';
+        textarea.style.opacity = '0';
+        document.body.appendChild(textarea);
+        textarea.select();
+        try {
+            document.execCommand('copy');
+            showCopySuccess();
+        } catch (err) {
+            showError('Failed to copy password');
+        }
+        document.body.removeChild(textarea);
+    }
+
+    function showCopySuccess() {
+        const btn = document.getElementById('copy-password-btn');
+        btn.innerHTML = '<i class="fa fa-check"></i> Copied!';
+        btn.classList.add('copied');
+        setTimeout(() => {
+            btn.innerHTML = '<i class="fa fa-copy"></i> Copy Password';
+            btn.classList.remove('copied');
+        }, 2000);
+    }
+
+    // Close Modal
+    document.getElementById('close-modal-btn').addEventListener('click', function() {
+        document.getElementById('password-modal').classList.remove('show');
+        window.currentPassword = null;
+        loadUsers();  // Refresh the users table
+    });
+
+
+    // Delete User
+    async function deleteUser(username) {
+        if (!confirm(`Delete user ${username}?`)) return;
+        await callAPI('delete_temp_user', {
+            cpanel_user: state.selectedAccount,
+            site_path: state.selectedSite,
+            username
+        });
+        loadUsers();
+    }
+
+    // Delete User from All Users Table
+    async function deleteUserFromAll(cpanelUser, sitePath, username) {
+        if (!confirm(`Delete user ${username} from ${sitePath}?`)) return;
+        await callAPI('delete_temp_user', {
+            cpanel_user: cpanelUser,
+            site_path: sitePath,
+            username
+        });
+        loadAllTempUsers();  // Refresh all users table
+        if (state.selectedSite === sitePath) {
+            loadUsers();  // Also refresh site-specific table if viewing that site
+        }
+    }
+
+    // Load All Temporary Users
+    let allUsersData = [];  // Store for filtering
+
+    async function loadAllTempUsers() {
+        try {
+            const users = await callAPI('list_all_temp_users');
+            allUsersData = users;
+            displayAllUsers(users);
+        } catch (error) {
+            console.error('Failed to load all temp users:', error);
+            const tbody = document.getElementById('all-users-table');
+            tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 20px; color: #e53e3e;">Failed to load users</td></tr>';
+        }
+    }
+
+    function displayAllUsers(users) {
+        const tbody = document.getElementById('all-users-table');
+
+        if (!users || users.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 20px; color: #718096;">No temporary users found</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = users.map(u => `
+            <tr>
+                <td>${escapeHtml(u.cpanel_account)}</td>
+                <td title="${escapeHtml(u.site_path)}">${escapeHtml(u.site_domain)}</td>
+                <td>${escapeHtml(u.username)}</td>
+                <td>${escapeHtml(u.email)}</td>
+                <td>${escapeHtml(u.expires)}</td>
+                <td>
+                    <button class="btn btn-danger btn-sm" onclick="deleteUserFromAll('${escapeHtml(u.cpanel_account)}', '${escapeHtml(u.site_path)}', '${escapeHtml(u.username)}')">
+                        <i class="fa fa-trash"></i> Delete
+                    </button>
+                </td>
+            </tr>
+        `).join('');
+    }
+
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    // Filter All Users Table
+    document.getElementById('filter-input').addEventListener('input', function() {
+        const filterText = this.value.toLowerCase();
+        if (!filterText) {
+            displayAllUsers(allUsersData);
+            return;
+        }
+
+        const filtered = allUsersData.filter(u => {
+            return (
+                u.cpanel_account.toLowerCase().includes(filterText) ||
+                u.site_domain.toLowerCase().includes(filterText) ||
+                u.site_path.toLowerCase().includes(filterText) ||
+                u.username.toLowerCase().includes(filterText) ||
+                u.email.toLowerCase().includes(filterText)
+            );
+        });
+
+        displayAllUsers(filtered);
+    });
+
+    // Refresh All Users Button
+    document.getElementById('refresh-all-users-btn').addEventListener('click', loadAllTempUsers);
+
+    // Tab Switching
+    document.querySelectorAll('.tab-button').forEach(button => {
+        button.addEventListener('click', function() {
+            const targetTab = this.getAttribute('data-tab');
+
+            // Update button states
+            document.querySelectorAll('.tab-button').forEach(btn => btn.classList.remove('active'));
+            this.classList.add('active');
+
+            // Update tab content visibility
+            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+            document.getElementById(targetTab).classList.add('active');
+
+            // Load data for manage tab when switching to it
+            if (targetTab === 'manage-tab') {
+                loadAllTempUsers();
+            }
+        });
+    });
+
+    // Event Listeners
+    document.getElementById('cpanel-account').addEventListener('change', async function() {
+        const account = this.value;
+        if (account) {
+            state.selectedAccount = account;
+            document.getElementById('wp-installs-section').style.display = 'block';
+
+            // Try to load cached results first
+            const hasCached = await loadCachedWordPress(account);
+            if (!hasCached) {
+                updateCacheStatus('No cached data - click Scan to find WordPress sites');
+            }
+        } else {
+            document.getElementById('wp-installs-section').style.display = 'none';
+        }
+    });
+    document.getElementById('scan-btn').addEventListener('click', scanWordPress);
+    document.getElementById('wp-site').addEventListener('change', function() {
+        const selectedSite = this.value;
+        if (selectedSite) {
+            state.selectedSite = selectedSite;
+            // Auto-show create form when site is selected
+            document.getElementById('create-user-section').style.display = 'block';
+        } else {
+            document.getElementById('create-user-section').style.display = 'none';
+        }
+    });
+    document.getElementById('create-btn').addEventListener('click', createUser);
+
+    // Initialize
+    loadAccounts();
+    callAPI('health').catch(() => {
+        document.getElementById('health-status').textContent = 'System: Error';
+        document.getElementById('health-status').className = 'status-badge status-error';
+    });
+</script>
+
+[% END %]
