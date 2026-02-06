@@ -182,13 +182,8 @@ log_info "Registering with WHM..."
 # Ensure directory exists
 mkdir -p /var/cpanel/apps
 
-# Write AppConfig to temp file
-TEMP_CONF=$(mktemp) || {
-    log_error "Failed to create temp file"
-    exit 1
-}
-
-cat > "$TEMP_CONF" <<'EOF'
+# Write AppConfig directly to final location
+cat > /var/cpanel/apps/wp_temp_accounts.conf <<'EOF'
 name=wp_temp_accounts
 service=whostmgr
 url=/cgi/wp_temp_accounts/wp_temp_accounts.cgi
@@ -200,29 +195,8 @@ target=_self
 icon=wp_temp_accounts_icon.png
 EOF
 
-# Verify temp file
-if [ ! -s "$TEMP_CONF" ]; then
-    log_error "Failed to write AppConfig to temp file"
-    rm -f "$TEMP_CONF"
-    exit 1
-fi
-
-# Move to final location
-if ! mv "$TEMP_CONF" /var/cpanel/apps/wp_temp_accounts.conf; then
-    log_error "Failed to move AppConfig"
-    rm -f "$TEMP_CONF"
-    exit 1
-fi
-
-# Set permissions
 chmod 644 /var/cpanel/apps/wp_temp_accounts.conf
 chown root:root /var/cpanel/apps/wp_temp_accounts.conf
-
-# Verify file exists
-if [ ! -f /var/cpanel/apps/wp_temp_accounts.conf ]; then
-    log_error "AppConfig file not created"
-    exit 1
-fi
 
 log_info "AppConfig created successfully"
 
