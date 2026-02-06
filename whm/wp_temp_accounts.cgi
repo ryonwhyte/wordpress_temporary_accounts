@@ -18,6 +18,20 @@ use File::Path qw(remove_tree);
 my $PLUGIN_VERSION = '4.2.0';
 my $GITHUB_REPO = 'https://github.com/ryonwhyte/wordpress_temporary_accounts.git';
 
+my @KNOWN_2FA_SLUGS = qw(
+    wordfence
+    wordfence-login-security
+    two-factor
+    google-authenticator
+    wp-2fa
+    miniorange-2-factor-authentication
+    duo-wordpress
+    all-in-one-wp-security-and-firewall
+    better-wp-security
+    ithemes-security-pro
+    shield-security
+);
+
 Whostmgr::ACLS::init_acls();
 
 run() unless caller();
@@ -1180,20 +1194,6 @@ sub list_all_temp_users {
 ###############################################################################
 # 2FA Plugin Management
 ###############################################################################
-
-my @KNOWN_2FA_SLUGS = qw(
-    wordfence
-    wordfence-login-security
-    two-factor
-    google-authenticator
-    wp-2fa
-    miniorange-2-factor-authentication
-    duo-wordpress
-    all-in-one-wp-security-and-firewall
-    better-wp-security
-    ithemes-security-pro
-    shield-security
-);
 
 sub detect_2fa_plugins {
     my ($payload) = @_;
