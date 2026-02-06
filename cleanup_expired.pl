@@ -197,6 +197,50 @@ sub find_wordpress_in_dir {
     }
 }
 
+sub reactivate_2fa_for_expired {
+    my ($cpanel_user, $site_path, $username, $wp) = @_;
+
+    my $registry = load_registry();
+    my $user_entry;
+
+    foreach my $entry (@{$registry->{users}}) {
+        if ($entry->{cpanel_account} eq $cpanel_user &&
+            $entry->{site_path} eq $site_path &&
+            $entry->{username} eq $username) {
+            $user_entry = $entry;
+            last;
+        }
+    }
+
+    return unless $user_entry && $user_entry->{disabled_2fa_plugin};
+
+    my $plugin_slug = $user_entry->{disabled_2fa_plugin};
+
+    # Check if other temp users on same site also have this plugin disabled
+    foreach my $entry (@{$registry->{users}}) {
+        next if ($entry->{username} eq $username &&
+                 $entry->{site_path} eq $site_path &&
+                 $entry->{cpanel_account} eq $cpanel_user);
+
+        if ($entry->{site_path} eq $site_path &&
+            ($entry->{disabled_2fa_plugin} || '') eq $plugin_slug) {
+            log_message("Skipping 2FA re-activation for $plugin_slug on $site_path - other temp users need it disabled");
+            return;
+        }
+    }
+
+    # Safe to re-activate
+    my $cmd = sprintf('%s plugin activate %s --path="%s" 2>&1',
+        $wp, quotemeta($plugin_slug), $site_path);
+    my ($output, $exit_code) = run_wp_cli($cmd, $cpanel_user);
+
+    if ($exit_code == 0) {
+        log_message("Re-activated 2FA plugin $plugin_slug on $site_path (expired user: $username)");
+    } else {
+        log_message("Failed to re-activate 2FA plugin $plugin_slug on $site_path: $output");
+    }
+}
+
 sub cleanup_expired_users {
     my $current_time = time();
     my $wp = get_wp_cli_path();
@@ -247,6 +291,9 @@ sub cleanup_expired_users {
 
                         # Check if expired
                         if ($expires && $expires =~ /^\d+$/ && $expires < $current_time) {
+                            # Re-activate 2FA plugin if it was disabled for this user
+                            reactivate_2fa_for_expired($cpanel_user, $site_path, $username, $wp);
+
                             # Expired - get user ID for fallback
                             my $id_cmd = qq{$wp user get "$username" --field=ID --path="$site_path" 2>&1};
                             my ($id_output, $id_exit) = run_wp_cli($id_cmd, $cpanel_user);
