@@ -11,6 +11,20 @@ use CGI();
 
 my $PLUGIN_VERSION = '4.2.0';
 
+my @KNOWN_2FA_SLUGS = qw(
+    wordfence
+    wordfence-login-security
+    two-factor
+    google-authenticator
+    wp-2fa
+    miniorange-2-factor-authentication
+    duo-wordpress
+    all-in-one-wp-security-and-firewall
+    better-wp-security
+    ithemes-security-pro
+    shield-security
+);
+
 run() unless caller();
 
 sub run {
@@ -1240,20 +1254,6 @@ sub sync_registry_with_wordpress {
 # 2FA Plugin Management
 ###############################################################################
 
-my @KNOWN_2FA_SLUGS = qw(
-    wordfence
-    wordfence-login-security
-    two-factor
-    google-authenticator
-    wp-2fa
-    miniorange-2-factor-authentication
-    duo-wordpress
-    all-in-one-wp-security-and-firewall
-    better-wp-security
-    ithemes-security-pro
-    shield-security
-);
-
 sub detect_2fa_plugins {
     my ($cpanel_user, $site_path) = @_;
 
@@ -1271,17 +1271,10 @@ sub detect_2fa_plugins {
         $wp, $site_path);
     my ($output, $exit_code) = run_wp_cli($cmd);
 
-    write_audit_log($cpanel_user, 'DETECT_2FA_DEBUG', "exit=$exit_code output_len=" . length($output || ''), substr($output || '', 0, 200));
-
     if ($exit_code == 0) {
         my $plugins = eval { Cpanel::JSON::Load($output) };
-        if ($@) {
-            write_audit_log($cpanel_user, 'DETECT_2FA_JSON_ERROR', "site=$site_path", "parse error: $@");
-        }
         if ($plugins && ref($plugins) eq 'ARRAY') {
-            write_audit_log($cpanel_user, 'DETECT_2FA_PLUGINS', "total_active=" . scalar(@$plugins), "slugs=" . join(',', map { $_->{name} || '?' } @$plugins));
             my %slug_set = map { $_ => 1 } @KNOWN_2FA_SLUGS;
-            write_audit_log($cpanel_user, 'DETECT_2FA_KNOWN', "known_count=" . scalar(@KNOWN_2FA_SLUGS), "known=" . join(',', @KNOWN_2FA_SLUGS));
             foreach my $p (@$plugins) {
                 my $slug = $p->{name} || '';
                 if ($slug_set{$slug}) {
