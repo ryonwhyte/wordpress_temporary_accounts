@@ -386,6 +386,18 @@ WRAPPER 'master_templates/master.tmpl'
                         <option value="30">30 Days</option>
                     </select>
                 </div>
+                <div class="form-group" id="2fa-plugin-group" style="display:none;">
+                    <label>
+                        <input type="checkbox" id="disable-2fa-checkbox" style="width:auto; margin-right:8px;">
+                        [% locale.maketext("Temporarily disable 2FA plugin") %]
+                    </label>
+                    <select id="2fa-plugin-select" class="form-control" style="margin-top:8px; display:none;">
+                        <option value="">[% locale.maketext("-- Select 2FA plugin --") %]</option>
+                    </select>
+                    <small style="display:block; margin-top:5px; color:#718096;">
+                        [% locale.maketext("Plugin will be re-enabled when this user is deleted or expires.") %]
+                    </small>
+                </div>
                 <button id="create-btn" class="btn btn-success">
                     [% locale.maketext("Create Temporary User") %]
                 </button>
@@ -635,13 +647,26 @@ WRAPPER 'master_templates/master.tmpl'
             return;
         }
 
-        const result = await callAPI('create_temp_user', {
+        // Build payload with optional 2FA disable
+        const payload = {
             cpanel_user: state.selectedAccount,
             site_path: state.selectedSite,
             username,
             email,
             days: days
-        });
+        };
+
+        const disable2FA = document.getElementById('disable-2fa-checkbox').checked;
+        const selected2FAPlugin = document.getElementById('2fa-plugin-select').value;
+        if (disable2FA) {
+            if (!selected2FAPlugin) {
+                showError('Please select a 2FA plugin to disable');
+                return;
+            }
+            payload.disable_2fa_plugin = selected2FAPlugin;
+        }
+
+        const result = await callAPI('create_temp_user', payload);
 
         // Show password to user in modal
         if (result && result.password) {
@@ -872,11 +897,57 @@ WRAPPER 'master_templates/master.tmpl'
             state.selectedSite = selectedSite;
             // Auto-show create form when site is selected
             document.getElementById('create-user-section').style.display = 'block';
+            // Detect 2FA plugins for this site
+            detect2FAPlugins(state.selectedAccount, selectedSite);
         } else {
             document.getElementById('create-user-section').style.display = 'none';
+            document.getElementById('2fa-plugin-group').style.display = 'none';
         }
     });
     document.getElementById('create-btn').addEventListener('click', createUser);
+
+    // 2FA checkbox toggle
+    document.getElementById('disable-2fa-checkbox').addEventListener('change', function() {
+        const dropdown = document.getElementById('2fa-plugin-select');
+        dropdown.style.display = this.checked ? 'block' : 'none';
+        if (!this.checked) dropdown.value = '';
+    });
+
+    // Detect 2FA Plugins
+    async function detect2FAPlugins(cpanelUser, sitePath) {
+        try {
+            const plugins = await callAPI('detect_2fa_plugins', {
+                cpanel_user: cpanelUser,
+                site_path: sitePath
+            });
+
+            const group = document.getElementById('2fa-plugin-group');
+            const select = document.getElementById('2fa-plugin-select');
+            const checkbox = document.getElementById('disable-2fa-checkbox');
+
+            if (plugins && plugins.length > 0) {
+                select.innerHTML = '<option value="">-- Select 2FA plugin --</option>';
+                plugins.forEach(function(p) {
+                    const opt = document.createElement('option');
+                    opt.value = p.slug;
+                    opt.textContent = p.title + ' (v' + p.version + ')';
+                    select.appendChild(opt);
+                });
+                // Auto-select if only one plugin
+                if (plugins.length === 1) {
+                    select.value = plugins[0].slug;
+                }
+                group.style.display = 'block';
+            } else {
+                group.style.display = 'none';
+                checkbox.checked = false;
+                select.style.display = 'none';
+            }
+        } catch (err) {
+            console.error('Failed to detect 2FA plugins:', err);
+            document.getElementById('2fa-plugin-group').style.display = 'none';
+        }
+    }
 
     // Load Plugin Status
     async function loadPluginStatus() {

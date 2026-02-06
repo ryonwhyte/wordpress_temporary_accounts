@@ -196,6 +196,10 @@ sub handle_api_request {
         my $all_users = list_all_temp_users();
         print_json_success($all_users);
     }
+    elsif ($action eq 'detect_2fa_plugins') {
+        my $plugins = detect_2fa_plugins($payload);
+        print_json_success($plugins);
+    }
     elsif ($action eq 'get_status') {
         get_status();
     }
@@ -853,6 +857,7 @@ sub create_temp_user {
     my $username = $payload->{username} || '';
     my $email = $payload->{email} || '';
     my $days = $payload->{days} || 7;
+    my $disable_2fa_plugin = $payload->{disable_2fa_plugin} || '';
 
     # Validate presence
     unless ($cpanel_user && $site_path && $username && $email) {
@@ -926,11 +931,32 @@ sub create_temp_user {
     my $verify_output = run_wp_cli($verify_cmd, $cpanel_user);
     write_audit_log('META_VERIFY', "user=$username cmd=$verify_cmd", "output=$verify_output");
 
+    # Handle 2FA plugin deactivation if requested
+    my $disabled_plugin_slug = '';
+    if ($disable_2fa_plugin ne '') {
+        if ($disable_2fa_plugin =~ /^[a-zA-Z0-9_-]+$/) {
+            write_audit_log('2FA_DISABLE_ATTEMPT', "user=$username site=$site_path plugin=$disable_2fa_plugin", "attempting");
+
+            my $deactivate_cmd = sprintf('%s plugin deactivate %s --path="%s" 2>&1',
+                $wp, quotemeta($disable_2fa_plugin), $site_path);
+            my ($deactivate_output, $deactivate_exit) = run_wp_cli($deactivate_cmd, $cpanel_user);
+
+            if ($deactivate_exit == 0) {
+                $disabled_plugin_slug = $disable_2fa_plugin;
+                write_audit_log('2FA_DISABLE_SUCCESS', "user=$username site=$site_path plugin=$disable_2fa_plugin", "deactivated");
+            } else {
+                write_audit_log('2FA_DISABLE_FAILED', "user=$username site=$site_path plugin=$disable_2fa_plugin", "error: $deactivate_output");
+            }
+        } else {
+            write_audit_log('2FA_DISABLE_INVALID', "user=$username plugin=$disable_2fa_plugin", "invalid slug format");
+        }
+    }
+
     # Get site domain for registry
     my $site_domain = extract_domain_from_site_path($site_path, $cpanel_user);
 
     # Add to registry
-    add_to_registry({
+    my $registry_entry = {
         cpanel_account => $cpanel_user,
         site_domain => $site_domain,
         site_path => $site_path,
@@ -938,16 +964,21 @@ sub create_temp_user {
         email => $email,
         created => time(),
         expires => $expires
-    });
+    };
+    if ($disabled_plugin_slug) {
+        $registry_entry->{disabled_2fa_plugin} = $disabled_plugin_slug;
+    }
+    add_to_registry($registry_entry);
 
     # Log successful creation
-    write_audit_log('CREATE_USER_SUCCESS', "user=$username site=$site_path days=$days", "success");
+    write_audit_log('CREATE_USER_SUCCESS', "user=$username site=$site_path days=$days 2fa_disabled=$disabled_plugin_slug", "success");
 
     print_json_success({
         username => $username,
         email => $email,
         password => $password,
-        expires => scalar localtime($expires)
+        expires => scalar localtime($expires),
+        disabled_2fa_plugin => $disabled_plugin_slug,
     });
 }
 
@@ -1021,8 +1052,9 @@ sub delete_temp_user {
     write_audit_log('DELETE_USER_ATTEMPT', "user=$username id=$user_id site=$site_path", "lookup_exit=$id_exit");
 
     if ($id_exit != 0) {
-        # User doesn't exist in WordPress - clean up registry only
+        # User doesn't exist in WordPress - re-activate 2FA if needed, then clean registry
         write_audit_log('DELETE_USER_NOT_FOUND', "user=$username site=$site_path", "User not found in WordPress, cleaning registry");
+        reactivate_2fa_if_safe($cpanel_user, $site_path, $username);
         remove_from_registry($cpanel_user, $site_path, $username);
         print_json_success({ deleted => $username, wp_cli_output => 'User not found in WordPress (already deleted). Registry cleaned.' });
         return;
@@ -1061,6 +1093,9 @@ sub delete_temp_user {
             return;
         }
     }
+
+    # Re-activate 2FA plugin if it was disabled for this user
+    reactivate_2fa_if_safe($cpanel_user, $site_path, $username);
 
     # User confirmed deleted - remove from registry
     remove_from_registry($cpanel_user, $site_path, $username);
@@ -1140,6 +1175,110 @@ sub list_all_temp_users {
     sync_registry_with_wordpress(\@all_temp_users);
 
     return \@all_temp_users;
+}
+
+###############################################################################
+# 2FA Plugin Management
+###############################################################################
+
+my @KNOWN_2FA_SLUGS = qw(
+    wordfence
+    wordfence-login-security
+    two-factor
+    google-authenticator
+    wp-2fa
+    miniorange-2-factor-authentication
+    duo-wordpress
+    all-in-one-wp-security-and-firewall
+    better-wp-security
+    ithemes-security-pro
+    shield-security
+);
+
+sub detect_2fa_plugins {
+    my ($payload) = @_;
+    my $cpanel_user = $payload->{cpanel_user} || '';
+    my $site_path = $payload->{site_path} || '';
+
+    return [] unless $cpanel_user && $site_path;
+
+    unless (validate_site_path($site_path, $cpanel_user)) {
+        write_audit_log('DETECT_2FA_INVALID_PATH', "user=$cpanel_user site=$site_path", 'failed');
+        return [];
+    }
+
+    my $wp = get_wp_cli_path();
+    my @detected;
+
+    my $cmd = sprintf('%s plugin list --status=active --format=json --path="%s" 2>&1',
+        $wp, $site_path);
+    my ($output, $exit_code) = run_wp_cli($cmd, $cpanel_user);
+
+    if ($exit_code == 0) {
+        my $plugins = eval { Cpanel::JSON::Load($output) };
+        if ($plugins && ref($plugins) eq 'ARRAY') {
+            my %slug_set = map { $_ => 1 } @KNOWN_2FA_SLUGS;
+            foreach my $p (@$plugins) {
+                my $slug = $p->{name} || '';
+                if ($slug_set{$slug}) {
+                    push @detected, {
+                        slug    => $slug,
+                        title   => $p->{title} || $slug,
+                        version => $p->{version} || 'unknown',
+                    };
+                }
+            }
+        }
+    }
+
+    write_audit_log('DETECT_2FA', "user=$cpanel_user site=$site_path", "found=" . scalar(@detected));
+    return \@detected;
+}
+
+sub reactivate_2fa_if_safe {
+    my ($cpanel_user, $site_path, $username) = @_;
+
+    my $registry = load_registry();
+    my $user_entry;
+
+    foreach my $entry (@{$registry->{users}}) {
+        if ($entry->{cpanel_account} eq $cpanel_user &&
+            $entry->{site_path} eq $site_path &&
+            $entry->{username} eq $username) {
+            $user_entry = $entry;
+            last;
+        }
+    }
+
+    return unless $user_entry && $user_entry->{disabled_2fa_plugin};
+
+    my $plugin_slug = $user_entry->{disabled_2fa_plugin};
+
+    # Check if other temp users on the same site also have this plugin disabled
+    foreach my $entry (@{$registry->{users}}) {
+        next if ($entry->{username} eq $username &&
+                 $entry->{site_path} eq $site_path &&
+                 $entry->{cpanel_account} eq $cpanel_user);
+
+        if ($entry->{site_path} eq $site_path &&
+            ($entry->{disabled_2fa_plugin} || '') eq $plugin_slug) {
+            write_audit_log('2FA_REACTIVATE_SKIP', "user=$username site=$site_path plugin=$plugin_slug",
+                "other temp users still need plugin disabled");
+            return;
+        }
+    }
+
+    # Safe to re-activate
+    my $wp = get_wp_cli_path();
+    my $cmd = sprintf('%s plugin activate %s --path="%s" 2>&1',
+        $wp, quotemeta($plugin_slug), $site_path);
+    my ($output, $exit_code) = run_wp_cli($cmd, $cpanel_user);
+
+    if ($exit_code == 0) {
+        write_audit_log('2FA_REACTIVATE_SUCCESS', "user=$username site=$site_path plugin=$plugin_slug", "re-activated");
+    } else {
+        write_audit_log('2FA_REACTIVATE_FAILED', "user=$username site=$site_path plugin=$plugin_slug", "error: $output");
+    }
 }
 
 ###############################################################################
