@@ -184,6 +184,87 @@ WRAPPER 'master_templates/master.tmpl'
     .tab-content.active {
         display: block;
     }
+    /* Settings / Update Styles */
+    .version-badge {
+        display: inline-block;
+        padding: 4px 10px;
+        border-radius: 3px;
+        font-size: 13px;
+        font-weight: 600;
+        background: #4299e1;
+        color: white;
+    }
+    .info-grid {
+        display: grid;
+        grid-template-columns: 140px 1fr;
+        gap: 10px;
+        margin-bottom: 15px;
+    }
+    .info-label {
+        font-weight: 600;
+        color: #4a5568;
+    }
+    .info-value {
+        color: #2d3748;
+    }
+    .update-info {
+        background: #ebf8ff;
+        border-left: 4px solid #4299e1;
+        padding: 12px;
+        border-radius: 4px;
+        margin: 15px 0;
+        font-size: 13px;
+        color: #2a4365;
+    }
+    .update-log {
+        display: none;
+        background: #1a202c;
+        color: #a0aec0;
+        padding: 15px;
+        border-radius: 4px;
+        margin: 15px 0;
+        font-family: monospace;
+        font-size: 12px;
+        max-height: 300px;
+        overflow-y: auto;
+    }
+    .update-log .success { color: #48bb78; }
+    .update-log .error { color: #fc8181; }
+    .update-log .info { color: #63b3ed; }
+    .update-result {
+        display: none;
+        padding: 12px;
+        border-radius: 4px;
+        margin: 15px 0;
+        font-weight: 500;
+    }
+    .update-result.success {
+        background: #f0fff4;
+        color: #276749;
+        border-left: 4px solid #48bb78;
+    }
+    .update-result.error {
+        background: #fff5f5;
+        color: #c53030;
+        border-left: 4px solid #f56565;
+    }
+    .delete-feedback {
+        display: none;
+        padding: 8px 12px;
+        border-radius: 4px;
+        margin-bottom: 15px;
+        font-size: 13px;
+    }
+    .delete-feedback.success {
+        background: #f0fff4;
+        color: #276749;
+        border-left: 4px solid #48bb78;
+    }
+    .delete-feedback.error {
+        background: #fff5f5;
+        color: #c53030;
+        border-left: 4px solid #f56565;
+    }
 </style>
 
 <div class="wp-temp-container">
@@ -244,6 +325,9 @@ WRAPPER 'master_templates/master.tmpl'
                 <button class="tab-button" data-tab="manage-tab">
                     <i class="fa fa-users"></i> [% locale.maketext("Manage All Users") %]
                 </button>
+                <button class="tab-button" data-tab="settings-tab">
+                    <i class="fa fa-cog"></i> [% locale.maketext("Settings") %]
+                </button>
             </div>
 
             <!-- Tab: Create User -->
@@ -290,6 +374,7 @@ WRAPPER 'master_templates/master.tmpl'
                 <div class="form-group">
                     <label for="wp-temp-expiration">[% locale.maketext("Expiration:") %]</label>
                     <select id="wp-temp-expiration" class="form-control">
+                        <option value="0.00347">5 Minutes (Testing)</option>
                         <option value="0.0208">30 Minutes</option>
                         <option value="0.0417">1 Hour</option>
                         <option value="0.0833">2 Hours</option>
@@ -316,6 +401,7 @@ WRAPPER 'master_templates/master.tmpl'
                             <i class="fa fa-refresh"></i> [% locale.maketext("Refresh") %]
                         </button>
                     </h2>
+                    <div id="delete-feedback" class="delete-feedback"></div>
                     <div id="all-users-filter" style="margin-bottom: 15px;">
                         <input type="text" id="filter-input" class="form-control" placeholder="[% locale.maketext('Filter by account, site, username, or email...') %]" style="max-width: 400px;">
                     </div>
@@ -340,6 +426,37 @@ WRAPPER 'master_templates/master.tmpl'
                     </div>
                 </div>
             </div><!-- End manage-tab -->
+
+            <!-- Tab: Settings -->
+            <div id="settings-tab" class="tab-content">
+                <div class="wp-card">
+                    <h2><i class="fa fa-info-circle"></i> [% locale.maketext("Plugin Information") %]</h2>
+                    <div class="info-grid">
+                        <span class="info-label">[% locale.maketext("Plugin Name") %]</span>
+                        <span class="info-value">WordPress Temporary Accounts</span>
+                        <span class="info-label">[% locale.maketext("Version") %]</span>
+                        <span class="info-value"><span id="plugin-version" class="version-badge">-</span></span>
+                        <span class="info-label">[% locale.maketext("GitHub") %]</span>
+                        <span class="info-value"><a id="plugin-repo" href="#" target="_blank">-</a></span>
+                    </div>
+                </div>
+
+                <div class="wp-card">
+                    <h2><i class="fa fa-download"></i> [% locale.maketext("Update Plugin") %]</h2>
+
+                    <div class="update-info">
+                        <strong><i class="fa fa-info-circle"></i> [% locale.maketext("Note:") %]</strong>
+                        [% locale.maketext("Updates are pulled directly from GitHub. Your logs and configuration will be preserved.") %]
+                    </div>
+
+                    <div id="update-result" class="update-result"></div>
+                    <div id="update-log" class="update-log"></div>
+
+                    <button id="update-btn" class="btn btn-success" onclick="confirmUpdate()">
+                        <i class="fa fa-download"></i> [% locale.maketext("Update to Latest Version") %]
+                    </button>
+                </div>
+            </div><!-- End settings-tab -->
         </div>
     </div>
 </div>
@@ -597,28 +714,47 @@ WRAPPER 'master_templates/master.tmpl'
     });
 
 
+    // Delete feedback helper
+    function showDeleteFeedback(message, isError) {
+        const fb = document.getElementById('delete-feedback');
+        fb.textContent = message;
+        fb.className = 'delete-feedback ' + (isError ? 'error' : 'success');
+        fb.style.display = 'block';
+        setTimeout(() => { fb.style.display = 'none'; }, 5000);
+    }
+
     // Delete User
     async function deleteUser(username) {
         if (!confirm(`Delete user ${username}?`)) return;
-        await callAPI('delete_temp_user', {
-            cpanel_user: state.selectedAccount,
-            site_path: state.selectedSite,
-            username
-        });
-        loadUsers();
+        try {
+            const result = await callAPI('delete_temp_user', {
+                cpanel_user: state.selectedAccount,
+                site_path: state.selectedSite,
+                username
+            });
+            showDeleteFeedback(`User "${username}" deleted successfully` + (result.verified ? ' (verified)' : ''), false);
+            loadUsers();
+        } catch (error) {
+            showDeleteFeedback(`Failed to delete "${username}": ${error.message}`, true);
+        }
     }
 
     // Delete User from All Users Table
     async function deleteUserFromAll(cpanelUser, sitePath, username) {
         if (!confirm(`Delete user ${username} from ${sitePath}?`)) return;
-        await callAPI('delete_temp_user', {
-            cpanel_user: cpanelUser,
-            site_path: sitePath,
-            username
-        });
-        loadAllTempUsers();  // Refresh all users table
-        if (state.selectedSite === sitePath) {
-            loadUsers();  // Also refresh site-specific table if viewing that site
+        try {
+            const result = await callAPI('delete_temp_user', {
+                cpanel_user: cpanelUser,
+                site_path: sitePath,
+                username
+            });
+            showDeleteFeedback(`User "${username}" deleted successfully` + (result.verified ? ' (verified)' : ''), false);
+            loadAllTempUsers();
+            if (state.selectedSite === sitePath) {
+                loadUsers();
+            }
+        } catch (error) {
+            showDeleteFeedback(`Failed to delete "${username}": ${error.message}`, true);
         }
     }
 
@@ -704,9 +840,11 @@ WRAPPER 'master_templates/master.tmpl'
             document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
             document.getElementById(targetTab).classList.add('active');
 
-            // Load data for manage tab when switching to it
+            // Load data for tabs when switching to them
             if (targetTab === 'manage-tab') {
                 loadAllTempUsers();
+            } else if (targetTab === 'settings-tab') {
+                loadPluginStatus();
             }
         });
     });
@@ -739,6 +877,77 @@ WRAPPER 'master_templates/master.tmpl'
         }
     });
     document.getElementById('create-btn').addEventListener('click', createUser);
+
+    // Load Plugin Status
+    async function loadPluginStatus() {
+        try {
+            const status = await callAPI('get_status');
+            document.getElementById('plugin-version').textContent = 'v' + (status.version || '?');
+            const repoUrl = (status.github_repo || '').replace(/\.git$/, '');
+            const repoLink = document.getElementById('plugin-repo');
+            repoLink.href = repoUrl;
+            repoLink.textContent = repoUrl;
+        } catch (error) {
+            console.error('Failed to load plugin status:', error);
+        }
+    }
+
+    // Update Plugin
+    function confirmUpdate() {
+        if (!confirm('Update WordPress Temporary Accounts?\n\nThis will:\n- Download the latest version from GitHub\n- Reinstall the plugin\n- Restart the cPanel service\n\nYour logs will be preserved.\n\nNOTE: The page will disconnect during restart. Please wait 10-15 seconds then refresh the page manually.')) {
+            return;
+        }
+        doUpdate();
+    }
+
+    async function doUpdate() {
+        const btn = document.getElementById('update-btn');
+        const resultDiv = document.getElementById('update-result');
+        const logDiv = document.getElementById('update-log');
+
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fa fa-spinner fa-spin"></i> Updating...';
+        resultDiv.style.display = 'none';
+        logDiv.style.display = 'none';
+
+        try {
+            const result = await callAPI('update_plugin');
+
+            logDiv.style.display = 'block';
+            logDiv.innerHTML = (result.results || []).map(r => {
+                let cls = 'info';
+                if (r.includes('Error') || r.includes('Failed') || r.includes('[✗]')) cls = 'error';
+                else if (r.includes('success') || r.includes('[✓]')) cls = 'success';
+                return '<div class="' + cls + '">' + escapeHtml(r) + '</div>';
+            }).join('');
+
+            if (result.success) {
+                resultDiv.className = 'update-result success';
+                resultDiv.innerHTML = '<strong>Success!</strong> ' + escapeHtml(result.message) +
+                    '<br><br>The page will reload in 3 seconds...';
+                resultDiv.style.display = 'block';
+                setTimeout(function() { window.location.reload(); }, 3000);
+            } else {
+                resultDiv.className = 'update-result error';
+                resultDiv.innerHTML = '<strong>Error:</strong> ' + escapeHtml(result.message);
+                resultDiv.style.display = 'block';
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fa fa-download"></i> Update to Latest Version';
+            }
+        } catch (error) {
+            if (error.message && error.message.includes('Failed to fetch')) {
+                resultDiv.className = 'update-result success';
+                resultDiv.innerHTML = '<strong>Update in progress...</strong><br>The cPanel service is restarting. Please wait 10-15 seconds, then <a href="javascript:window.location.reload()">refresh this page</a>.';
+                resultDiv.style.display = 'block';
+            } else {
+                resultDiv.className = 'update-result error';
+                resultDiv.innerHTML = '<strong>Error:</strong> ' + escapeHtml(error.message);
+                resultDiv.style.display = 'block';
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fa fa-download"></i> Update to Latest Version';
+            }
+        }
+    }
 
     // Initialize
     loadAccounts();
