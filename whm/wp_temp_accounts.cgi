@@ -15,7 +15,7 @@ use CGI();
 use File::Temp qw(tempdir);
 use File::Path qw(remove_tree);
 
-my $PLUGIN_VERSION = '4.1.0';
+my $PLUGIN_VERSION = '4.2.0';
 my $GITHUB_REPO = 'https://github.com/ryonwhyte/wordpress_temporary_accounts.git';
 
 Whostmgr::ACLS::init_acls();

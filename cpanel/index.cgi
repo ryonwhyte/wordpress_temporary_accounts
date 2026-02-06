@@ -9,7 +9,7 @@ use lib '/usr/local/cpanel';
 use Cpanel::JSON();
 use CGI();
 
-my $PLUGIN_VERSION = '4.1.0';
+my $PLUGIN_VERSION = '4.2.0';
 
 run() unless caller();
 
