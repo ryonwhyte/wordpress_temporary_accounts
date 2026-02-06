@@ -170,11 +170,7 @@ clear_all_caches
 log_info "Rebuilding sprites..."
 /usr/local/cpanel/bin/rebuild_sprites 2>/dev/null || true
 
-# Hard restart cPanel
-log_info "Restarting cPanel service (hard restart)..."
-/scripts/restartsrv_cpsrvd --hard
-
-log_info "cPanel plugin registered successfully"
+log_info "cPanel plugin files installed"
 
 # Register with WHM
 log_info "Registering with WHM..."
@@ -186,13 +182,8 @@ log_info "Registering with WHM..."
 # Ensure directory exists
 mkdir -p /var/cpanel/apps
 
-# Write AppConfig to temp file
-TEMP_CONF=$(mktemp) || {
-    log_error "Failed to create temp file"
-    exit 1
-}
-
-cat > "$TEMP_CONF" <<'EOF'
+# Write AppConfig directly to final location
+cat > /var/cpanel/apps/wp_temp_accounts.conf <<'EOF'
 name=wp_temp_accounts
 service=whostmgr
 url=/cgi/wp_temp_accounts/wp_temp_accounts.cgi
@@ -204,29 +195,8 @@ target=_self
 icon=wp_temp_accounts_icon.png
 EOF
 
-# Verify temp file
-if [ ! -s "$TEMP_CONF" ]; then
-    log_error "Failed to write AppConfig to temp file"
-    rm -f "$TEMP_CONF"
-    exit 1
-fi
-
-# Move to final location
-if ! mv "$TEMP_CONF" /var/cpanel/apps/wp_temp_accounts.conf; then
-    log_error "Failed to move AppConfig"
-    rm -f "$TEMP_CONF"
-    exit 1
-fi
-
-# Set permissions
 chmod 644 /var/cpanel/apps/wp_temp_accounts.conf
 chown root:root /var/cpanel/apps/wp_temp_accounts.conf
-
-# Verify file exists
-if [ ! -f /var/cpanel/apps/wp_temp_accounts.conf ]; then
-    log_error "AppConfig file not created"
-    exit 1
-fi
 
 log_info "AppConfig created successfully"
 
@@ -278,7 +248,9 @@ log_info "Setting up cron job..."
 CRON_JOB="0 * * * * /usr/local/cpanel/scripts/wp_temp_accounts_cleanup >/dev/null 2>&1"
 (crontab -l 2>/dev/null | grep -v "wp_temp_accounts_cleanup"; echo "$CRON_JOB") | crontab -
 
-# Note: Cache clearing, sprite rebuilding, and cpsrvd restart already done above for cPanel
+# Final: Hard restart cPanel service (MUST be after all registrations)
+log_info "Restarting cPanel service (hard restart)..."
+/scripts/restartsrv_cpsrvd --hard
 
 echo ""
 echo "======================================"
@@ -333,6 +305,12 @@ if [ -f "/usr/local/cpanel/whostmgr/docroot/cgi/wp_temp_accounts/wp_temp_account
     echo -e "${GREEN}✓${NC} WHM plugin installed"
 else
     echo -e "${RED}✗${NC} WHM plugin NOT found"
+fi
+
+if [ -f "/var/cpanel/apps/wp_temp_accounts.conf" ]; then
+    echo -e "${GREEN}✓${NC} WHM AppConfig registered"
+else
+    echo -e "${RED}✗${NC} WHM AppConfig NOT found"
 fi
 
 echo ""

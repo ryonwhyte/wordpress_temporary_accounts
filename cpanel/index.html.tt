@@ -253,6 +253,7 @@ SET dprefix = CPANEL.CPVAR.dprefix;
         <div style="margin-bottom: 20px;">
             <h1 style="font-size: 24px; color: #2d3748; margin-bottom: 10px;">WordPress Temporary Accounts</h1>
             <span id="health-status" class="status-badge status-ok">System: OK</span>
+            <span id="plugin-version" style="display:inline-block; padding:6px 10px; border-radius:3px; font-size:12px; font-weight:600; background:#4299e1; color:white; margin-left:8px;">-</span>
         </div>
 
         <div id="error-message"></div>
@@ -336,6 +337,7 @@ SET dprefix = CPANEL.CPVAR.dprefix;
             <div class="form-group">
                 <label for="wp-temp-expiration">Expiration:</label>
                 <select id="wp-temp-expiration" class="form-control">
+                    <option value="0.00347">5 Minutes (Testing)</option>
                     <option value="0.0208">30 Minutes</option>
                     <option value="0.0417">1 Hour</option>
                     <option value="0.0833">2 Hours</option>
@@ -360,6 +362,7 @@ SET dprefix = CPANEL.CPVAR.dprefix;
                         <i class="fa fa-refresh"></i> Refresh
                     </button>
                 </h2>
+                <div id="delete-feedback" style="display:none; padding:8px 12px; border-radius:4px; margin-bottom:15px; font-size:13px;"></div>
                 <div id="all-users-filter" style="margin-bottom: 15px;">
                     <input type="text" id="filter-input" class="form-control" placeholder="Filter by site, username, or email..." style="max-width: 400px;">
                 </div>
@@ -599,26 +602,47 @@ SET dprefix = CPANEL.CPVAR.dprefix;
     });
 
 
+    // Delete feedback helper
+    function showDeleteFeedback(message, isError) {
+        const fb = document.getElementById('delete-feedback');
+        fb.textContent = message;
+        fb.style.background = isError ? '#fff5f5' : '#f0fff4';
+        fb.style.color = isError ? '#c53030' : '#276749';
+        fb.style.borderLeft = '4px solid ' + (isError ? '#f56565' : '#48bb78');
+        fb.style.display = 'block';
+        setTimeout(() => { fb.style.display = 'none'; }, 5000);
+    }
+
     // Delete User
     async function deleteUser(username) {
         if (!confirm(`Delete user ${username}?`)) return;
-        await callAPI('delete_temp_user', {
-            site_path: state.selectedSite,
-            username
-        });
-        loadUsers();
+        try {
+            const result = await callAPI('delete_temp_user', {
+                site_path: state.selectedSite,
+                username
+            });
+            showDeleteFeedback(`User "${username}" deleted successfully` + (result.verified ? ' (verified)' : ''), false);
+            loadUsers();
+        } catch (error) {
+            showDeleteFeedback(`Failed to delete "${username}": ${error.message}`, true);
+        }
     }
 
     // Delete User from All Users Table
     async function deleteUserFromAll(sitePath, username) {
         if (!confirm(`Delete user ${username} from ${sitePath}?`)) return;
-        await callAPI('delete_temp_user', {
-            site_path: sitePath,
-            username
-        });
-        loadAllTempUsers();  // Refresh all users table
-        if (state.selectedSite === sitePath) {
-            loadUsers();  // Also refresh site-specific table if viewing that site
+        try {
+            const result = await callAPI('delete_temp_user', {
+                site_path: sitePath,
+                username
+            });
+            showDeleteFeedback(`User "${username}" deleted successfully` + (result.verified ? ' (verified)' : ''), false);
+            loadAllTempUsers();
+            if (state.selectedSite === sitePath) {
+                loadUsers();
+            }
+        } catch (error) {
+            showDeleteFeedback(`Failed to delete "${username}": ${error.message}`, true);
         }
     }
 
@@ -729,6 +753,9 @@ SET dprefix = CPANEL.CPVAR.dprefix;
         document.getElementById('health-status').textContent = 'System: Error';
         document.getElementById('health-status').className = 'status-badge status-error';
     });
+    callAPI('get_status').then(status => {
+        document.getElementById('plugin-version').textContent = 'v' + (status.version || '?');
+    }).catch(() => {});
 </script>
 
 [% END %]

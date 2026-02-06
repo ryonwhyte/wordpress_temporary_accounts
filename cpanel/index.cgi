@@ -9,6 +9,8 @@ use lib '/usr/local/cpanel';
 use Cpanel::JSON();
 use CGI();
 
+my $PLUGIN_VERSION = '4.1.0';
+
 run() unless caller();
 
 sub run {
@@ -116,7 +118,7 @@ sub validate_days {
     return 0 unless defined $days;
     # Accept decimal values (e.g., 0.0208 for 30 minutes)
     return 0 unless $days =~ /^\d+\.?\d*$/;
-    return $days >= 0.0208 && $days <= 365;  # 30 minutes to 1 year max
+    return $days >= 0.00347 && $days <= 365;  # 5 minutes to 1 year max
 }
 
 sub validate_site_path {
@@ -187,6 +189,9 @@ sub handle_api_request_direct {
     elsif ($action eq 'list_all_temp_users') {
         my $all_users = list_all_temp_users($cpanel_user);
         print_json_success($all_users);
+    }
+    elsif ($action eq 'get_status') {
+        print_json_success({ version => $PLUGIN_VERSION });
     }
     else {
         print_json_error('unknown_action', "Unknown action: $action");
@@ -1048,27 +1053,64 @@ sub delete_temp_user {
         return;
     }
 
-    # Note: Running as cPanel user directly (no sudo needed in cPanel context)
     my $wp = get_wp_cli_path();
-    my $cmd = qq{$wp user delete "$username" --yes --path="$site_path" 2>&1};
-    my ($output, $exit_code) = run_wp_cli($cmd);
 
-    # Log the WP-CLI output for debugging
-    write_audit_log($cpanel_user, 'DELETE_USER_ATTEMPT', "user=$username site=$site_path cmd=$cmd", "exit_code=$exit_code output=$output");
+    # First, get the user ID for fallback deletion
+    my $id_cmd = qq{$wp user get "$username" --field=ID --path="$site_path" 2>&1};
+    my ($id_output, $id_exit) = run_wp_cli($id_cmd);
+    chomp $id_output if $id_output;
+    my $user_id = ($id_exit == 0 && $id_output =~ /^(\d+)$/) ? $1 : undef;
 
-    if ($exit_code != 0) {
-        write_audit_log($cpanel_user, 'DELETE_USER_FAILED', "user=$username site=$site_path", "error: $output");
-        print_json_error('wp_cli_error', "Failed to delete user: $output");
+    write_audit_log($cpanel_user, 'DELETE_USER_ATTEMPT', "user=$username id=$user_id site=$site_path", "lookup_exit=$id_exit");
+
+    if ($id_exit != 0) {
+        # User doesn't exist in WordPress - clean up registry only
+        write_audit_log($cpanel_user, 'DELETE_USER_NOT_FOUND', "user=$username site=$site_path", "User not found in WordPress, cleaning registry");
+        remove_from_registry($cpanel_user, $site_path, $username);
+        print_json_success({ deleted => $username, wp_cli_output => 'User not found in WordPress (already deleted). Registry cleaned.' });
         return;
     }
 
-    # Remove from registry
+    # Delete by username
+    my $cmd = qq{$wp user delete "$username" --yes --path="$site_path" 2>&1};
+    my ($output, $exit_code) = run_wp_cli($cmd);
+
+    write_audit_log($cpanel_user, 'DELETE_USER_CMD', "user=$username site=$site_path cmd=$cmd", "exit_code=$exit_code output=$output");
+
+    # Verify user was actually deleted
+    my $verify_cmd = qq{$wp user get "$username" --field=ID --path="$site_path" 2>&1};
+    my ($verify_out, $verify_exit) = run_wp_cli($verify_cmd);
+
+    if ($verify_exit == 0) {
+        # User still exists! Try fallback: delete by user ID
+        write_audit_log($cpanel_user, 'DELETE_USER_STILL_EXISTS', "user=$username id=$user_id site=$site_path", "Trying delete by ID");
+
+        if ($user_id) {
+            my $id_delete_cmd = qq{$wp user delete $user_id --yes --path="$site_path" 2>&1};
+            my ($id_del_out, $id_del_exit) = run_wp_cli($id_delete_cmd);
+
+            write_audit_log($cpanel_user, 'DELETE_USER_BY_ID', "id=$user_id site=$site_path", "exit=$id_del_exit output=$id_del_out");
+
+            # Verify again
+            my ($final_out, $final_exit) = run_wp_cli($verify_cmd);
+            if ($final_exit == 0) {
+                write_audit_log($cpanel_user, 'DELETE_USER_FAILED', "user=$username site=$site_path", "User persists after both delete attempts");
+                print_json_error('delete_failed', "Failed to delete user from WordPress. WP-CLI output: $output / ID delete: $id_del_out");
+                return;
+            }
+        } else {
+            write_audit_log($cpanel_user, 'DELETE_USER_FAILED', "user=$username site=$site_path", "No user ID for fallback");
+            print_json_error('delete_failed', "Failed to delete user from WordPress. WP-CLI output: $output");
+            return;
+        }
+    }
+
+    # User confirmed deleted - remove from registry
     remove_from_registry($cpanel_user, $site_path, $username);
 
-    # Log successful deletion
-    write_audit_log($cpanel_user, 'DELETE_USER_SUCCESS', "user=$username site=$site_path", "output: $output");
+    write_audit_log($cpanel_user, 'DELETE_USER_SUCCESS', "user=$username site=$site_path", "Verified deleted from WordPress");
 
-    print_json_success({ deleted => $username, wp_cli_output => $output });
+    print_json_success({ deleted => $username, wp_cli_output => $output, verified => 1 });
 }
 
 sub list_all_temp_users {

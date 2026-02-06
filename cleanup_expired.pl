@@ -27,7 +27,7 @@ sub get_wp_cli_path {
         '/usr/local/bin/wp',
         '/usr/bin/wp',
         '/opt/cpanel/composer/bin/wp',
-        '/usr/local/cpanel/3rdparty/bin/wp',
+        '/usr/local/cpanel/3rdparty/bin/wp/',
     );
 
     # First try using 'which' command
@@ -247,14 +247,37 @@ sub cleanup_expired_users {
 
                         # Check if expired
                         if ($expires && $expires =~ /^\d+$/ && $expires < $current_time) {
-                            # Expired - delete it
-                            my $delete_cmd = sprintf('%s user delete %s --yes --path="%s" 2>&1',
-                                $wp, quotemeta($username), $site_path);
+                            # Expired - get user ID for fallback
+                            my $id_cmd = qq{$wp user get "$username" --field=ID --path="$site_path" 2>&1};
+                            my ($id_output, $id_exit) = run_wp_cli($id_cmd, $cpanel_user);
+                            chomp $id_output if $id_output;
+                            my $user_id = ($id_exit == 0 && $id_output =~ /^(\d+)$/) ? $1 : undef;
+
+                            # Delete by username
+                            my $delete_cmd = qq{$wp user delete "$username" --yes --path="$site_path" 2>&1};
                             my ($delete_output, $delete_exit) = run_wp_cli($delete_cmd, $cpanel_user);
 
-                            if ($delete_exit == 0) {
+                            # Verify deletion
+                            my $verify_cmd = qq{$wp user get "$username" --field=ID --path="$site_path" 2>&1};
+                            my ($verify_out, $verify_exit) = run_wp_cli($verify_cmd, $cpanel_user);
+
+                            if ($verify_exit != 0) {
+                                # Confirmed deleted
                                 log_message("Deleted expired user: $username from $site_path (account: $cpanel_user)");
                                 $deleted_count++;
+                            } elsif ($user_id) {
+                                # Still exists - try by ID
+                                log_message("User $username still exists after delete, trying by ID $user_id");
+                                my $id_del_cmd = qq{$wp user delete $user_id --yes --path="$site_path" 2>&1};
+                                my ($id_del_out, $id_del_exit) = run_wp_cli($id_del_cmd, $cpanel_user);
+
+                                my ($final_out, $final_exit) = run_wp_cli($verify_cmd, $cpanel_user);
+                                if ($final_exit != 0) {
+                                    log_message("Deleted expired user by ID: $username (ID $user_id) from $site_path");
+                                    $deleted_count++;
+                                } else {
+                                    log_message("Failed to delete user: $username from $site_path - persists after both attempts");
+                                }
                             } else {
                                 log_message("Failed to delete user: $username from $site_path - $delete_output");
                             }
